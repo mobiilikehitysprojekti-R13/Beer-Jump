@@ -1,20 +1,20 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { Canvas, Circle } from "@shopify/react-native-skia"
+import { useSharedValue, useFrameCallback } from "react-native-reanimated"
+import { View } from "react-native"
 
 export default function App() {
-  return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
-  );
-}
+  const x = useSharedValue(100)
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+  useFrameCallback(() => {
+    "worklet"
+    x.value = (x.value + 2) % 350
+  })
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "brown" }}>
+      <Canvas style={{ flex: 1 }}>
+        <Circle cx={x} cy={200} r={30} color='gold' />
+      </Canvas>
+    </View>
+  )
+}
