@@ -1,5 +1,3 @@
-import { SharedValue } from "react-native-reanimated"
-
 export type GamePhase = "idle" | "running" | "paused" | "gameover"
 
 export type PlatformType =
