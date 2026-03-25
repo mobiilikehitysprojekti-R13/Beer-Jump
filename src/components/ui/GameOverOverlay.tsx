@@ -1,4 +1,5 @@
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
+import { submitScore } from '../../services/firebase/leaderboard'
 
 // GameOverOverlay
 // Renders the game-over UI as a full-screen View overlay inside GameScreen.
@@ -23,6 +24,7 @@ export function GameOverOverlay({
   onPlayAgain,
   onHome,
 }: Props) {
+  onGameOver(score) // submit score to Firebase (async, no await needed)
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Game Over</Text>
@@ -43,6 +45,15 @@ export function GameOverOverlay({
       </TouchableOpacity>
     </View>
   )
+}
+
+const onGameOver = async (score: number) => {
+  await submitScore(score, {
+    level: 3,
+    xp: 120,
+    coins: 50,
+    platform: 'ios',
+  })
 }
 
 const styles = StyleSheet.create({
