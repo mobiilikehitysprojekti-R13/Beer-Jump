@@ -44,10 +44,6 @@ const LEVEL_COLOURS: Record<Level, string> = {
 }
 const RESET = "\x1b[0m"
 
-const CATEGORY_COLOURS: Record<string, string> = {
-  firebase: "\x1b[38;5;208m", // force orange for all Firebase logs
-}
-
 function shouldLog(category: string): boolean {
   if (!LOGGING_ENABLED) return false
   if (ACTIVE_CATEGORIES.length === 0) return true
@@ -60,18 +56,9 @@ function formatMessage(
   message: string,
   data?: Record<string, unknown>,
 ): string {
-  // Category color overrides level color
-  const categoryColour = CATEGORY_COLOURS[category]
-  const levelColour = LEVEL_COLOURS[level]
-
-  const colour =
-    level === "INFO" && categoryColour
-      ? categoryColour
-      : levelColour
-
-  const prefix = `${colour}[${level}] [${category}]${RESET}`
+  const colour = LEVEL_COLOURS[level]
+  const prefix = `${colour}[${level}]${RESET} [${category}]`
   const dataStr = data ? " " + JSON.stringify(data) : ""
-
   return `${prefix} ${message}${dataStr}`
 }
 
