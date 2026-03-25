@@ -9,6 +9,7 @@ import { TouchZones } from "../components/ui/TouchZones"
 import { HomeOverlay } from "../components/ui/HomeOverlay"
 import { GameOverOverlay } from "../components/ui/GameOverOverlay"
 import { isPaused } from "../state/gameValues"
+import { initAuth } from '../services/firebase/auth'
 import { log } from "../utils/logger"
 
 // ---------------------------------------------------------------------------
@@ -125,6 +126,14 @@ export default function GameScreen() {
   // a manually paused game stays paused after the player backgrounds and returns.
   useEffect(() => {
     let pausedByBackground = false
+
+    initAuth()
+      .then((user) => {
+        log.info("firebase", "auth ready", { uid: user.uid })
+      })
+      .catch((err) => {
+        log.error("firebase", "auth failed", { error: String(err) })
+      })
 
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
