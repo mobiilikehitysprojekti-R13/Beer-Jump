@@ -27,6 +27,7 @@ type AppStore = {
   authUID: string | null
   googleUID: string | null
   playerName: string
+  setAuthUID: (uid: string) => void
 
   // Progression stubs
   coins: number
@@ -43,7 +44,7 @@ export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({
       // Game phase
-      gamePhase: "idle",
+      gamePhase: "home",
       setGamePhase: (phase) => set({ gamePhase: phase }),
 
       // Scores
@@ -71,6 +72,7 @@ export const useAppStore = create<AppStore>()(
       authUID: null,
       googleUID: null,
       playerName: "Player",
+      setAuthUID: (uid) => set({ authUID: uid }),
 
       // Progression stubs
       coins: 0,
