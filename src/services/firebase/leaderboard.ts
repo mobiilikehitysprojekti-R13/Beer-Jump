@@ -1,5 +1,5 @@
 import { Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
-import { getUser, initAuth } from './auth'
+import { getUser } from './auth'
 import { getDocument, setDocument, updateDocument } from './firestore'
 import { db } from './config'
 import { log } from '../../utils/logger'
@@ -27,13 +27,12 @@ export const submitScore = async (
   score: number,
   extra: { level: number; xp: number; coins: number; platform: 'ios' | 'android' }
 ) => {
-  let user = getUser()
+  // Auth is guaranteed settled by App.tsx bootstrap before GameScreen mounts.
+  // If getUser() somehow returns null here it means the bootstrap sequence
+  // was bypassed — log and bail rather than attempting a broken sign-in.
+  const user = getUser()
   if (!user) {
-    log.warn("firebase", "no user, initializing auth...")
-    user = await initAuth()
-  }
-  if (!user) {
-    log.error("firebase", "submitScore failed, no user after init")
+    log.error("firebase", "submitScore: getUser() returned null — auth bootstrap may not have completed,{ score }")
     return
   }
 
@@ -82,12 +81,12 @@ export const getTopPlayers = async (top = 10): Promise<LeaderboardEntry[]> => {
     const q = query(collection(db, COLLECTION), orderBy('score', 'desc'), limit(top))
     const snap = await getDocs(q)
 
-    const entries: LeaderboardEntry[] = snap.docs.map(doc => ({
+    const entries: LeaderboardEntry[] = snap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Omit<LeaderboardEntry, 'id'>),
     }))
 
-    log.info("firebase", "top players fetched", { count: entries.length })
+    log.info("firebase", "getTopPlayers fetched", { count: entries.length })
     return entries
   } catch (err) {
     log.error("firebase", "getTopPlayers failed", { error: String(err) })
