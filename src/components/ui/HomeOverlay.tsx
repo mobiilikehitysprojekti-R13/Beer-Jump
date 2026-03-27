@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
 import { useAppStore } from "../../state/appStore"
+import { LeaderboardOverlay } from './LeaderboardOverlay'
 
 // HomeOverlay
 // Renders the home / main menu UI as a full-screen View overlay inside
@@ -22,6 +24,7 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
 
 export function HomeOverlay({ onPlay }: Props) {
   const personalBest = useAppStore(selectPersonalBest)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
 
   return (
     <View style={styles.container}>
@@ -30,6 +33,15 @@ export function HomeOverlay({ onPlay }: Props) {
       <TouchableOpacity style={styles.button} onPress={onPlay}>
         <Text style={styles.buttonText}>Play</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.button} onPress={() => setShowLeaderboard(true)}>
+        <Text style={styles.buttonText}>Leaderboard</Text>
+      </TouchableOpacity>
+
+      <LeaderboardOverlay
+        visible={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+      />
     </View>
   )
 }

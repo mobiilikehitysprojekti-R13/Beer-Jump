@@ -1,62 +1,96 @@
-import { Timestamp } from 'firebase/firestore'
+import { Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { getUser, initAuth } from './auth'
 import { getDocument, setDocument, updateDocument } from './firestore'
+import { db } from './config'
 import { log } from '../../utils/logger'
+
+// -------------------------
+// Types
+// -------------------------
+export type LeaderboardEntry = {
+  id: string
+  playerName: string
+  score: number
+  level: number
+  xp: number
+  coins: number
+  platform: 'ios' | 'android'
+  timestamp: any
+}
 
 const COLLECTION = 'leaderboard'
 
-export const submitScore = async (score: number, extra: {
-    level: number
-    xp: number
-    coins: number
-    platform: 'ios' | 'android'
-}) => {
-    const user = getUser()
-    if (!user) throw new Error('User not authenticated')
+// -------------------------
+// Submit a score
+// -------------------------
+export const submitScore = async (
+  score: number,
+  extra: { level: number; xp: number; coins: number; platform: 'ios' | 'android' }
+) => {
+  let user = getUser()
+  if (!user) {
+    log.warn("firebase", "no user, initializing auth...")
+    user = await initAuth()
+  }
+  if (!user) {
+    log.error("firebase", "submitScore failed, no user after init")
+    return
+  }
 
-    log.info("firebase", "submitScore called", { score })
+  log.info("firebase", "submitScore called", { uid: user.uid, score })
 
-    const existing = await getDocument(COLLECTION, user.uid)
+  const existing = await getDocument(COLLECTION, user.uid)
+  const data = {
+    playerName: 'Player', // you can replace this with a customizable name
+    score,
+    timestamp: Timestamp.now(),
+    ...extra,
+  }
 
-    const data = {
-        playerName: 'Player',
-        score,
-        timestamp: Timestamp.now(),
-        ...extra,
-    }
+  if (!existing) {
+    log.info("firebase", "creating new leaderboard entry", { uid: user.uid, score })
+    return setDocument(COLLECTION, user.uid, data)
+  }
 
-    if (!user) {
-        log.warn("firebase", "no user, initializing auth...")
-        const newUser = await initAuth()
-    }
+  if (score > existing.score) {
+    log.info("firebase", "new high score", { oldScore: existing.score, newScore: score })
+    return updateDocument(COLLECTION, user.uid, data)
+  }
 
-    if (!existing) {
-        log.info("firebase", "creating new leaderboard entry", {
-            uid: user.uid,
-            score,
-        })
-
-        return setDocument(COLLECTION, user.uid, data)
-    }
-
-    if (score > existing.score) {
-        log.info("firebase", "new high score", {
-            oldScore: existing.score,
-            newScore: score,
-        })
-
-        return updateDocument(COLLECTION, user.uid, data)
-    }
-
-    log.info("firebase", "score not higher, skipping update", {
-        score,
-        best: existing.score,
-    })
+  log.info("firebase", "score not higher, skipping update", { score, best: existing.score })
 }
 
-export const getPlayerData = async () => {
-    const user = getUser()
-    if (!user) return null
+// -------------------------
+// Get the current player's leaderboard data
+// -------------------------
+export const getPlayerData = async (): Promise<LeaderboardEntry | null> => {
+  const user = getUser()
+  if (!user) return null
 
-    return getDocument(COLLECTION, user.uid)
+  const docData = await getDocument(COLLECTION, user.uid)
+  if (!docData) return null
+
+  return { id: user.uid, ...(docData as Omit<LeaderboardEntry, 'id'>) }
+}
+
+// -------------------------
+// Get top N leaderboard players
+// -------------------------
+export const getTopPlayers = async (top = 10): Promise<LeaderboardEntry[]> => {
+  try {
+    log.info("firebase", "fetching top players", { top })
+    const q = query(collection(db, COLLECTION), orderBy('score', 'desc'), limit(top))
+    const snap = await getDocs(q)
+
+    const entries: LeaderboardEntry[] = snap.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as Omit<LeaderboardEntry, 'id'>),
+    }))
+
+    log.info("firebase", "top players fetched", { count: entries.length })
+    return entries
+  } catch (err) {
+    log.error("firebase", "getTopPlayers failed", { error: String(err) })
+    return []
+  }
 }
