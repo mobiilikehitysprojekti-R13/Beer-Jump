@@ -9,7 +9,7 @@ import { TouchZones } from "../components/ui/TouchZones"
 import { HomeOverlay } from "../components/ui/HomeOverlay"
 import { GameOverOverlay } from "../components/ui/GameOverOverlay"
 import { isPaused } from "../state/gameValues"
-import { initAuth } from '../services/firebase/auth'
+import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
 
 // ---------------------------------------------------------------------------
@@ -27,23 +27,16 @@ const selectSensitivity = (s: ReturnType<typeof useAppStore.getState>) =>
   s.gyroSensitivity
 
 // ---------------------------------------------------------------------------
-// GamePhase
-//
-// "home"    — HomeOverlay visible, game loop idle (not started yet)
-// "playing" — game running, HUD visible
-// "gameover" — GameOverOverlay visible, score frozen
-//
-// Note: "paused" is not a phase here — it is handled via isPaused SharedValue
-// inside the HUD, orthogonal to game phase.
-// ---------------------------------------------------------------------------
-type GamePhase = "home" | "playing" | "gameover"
-
-// ---------------------------------------------------------------------------
 // GameScreen
 //
 // The permanent root screen — mounts once at app start and NEVER unmounts.
 // This is the architectural fix for BUG-9. All UI states are rendered as
 // View overlays on top of the Skia canvas, not as separate navigator screens.
+//
+// Auth precondition: App.tsx awaits initAuth() before the navigator renders.
+// By the time GameScreen mounts, Firebase auth is guaranteed settled.
+// initAuth() must NOT be called here — it belongs in App.tsx only.
+// See: firebase-auth-fix-plan.md §4 Fix 1 and architecture doc Rule 17.
 //
 // Rendering layers (bottom to top):
 //   1. GameCanvas      — Skia canvas, always present
@@ -124,16 +117,12 @@ export default function GameScreen() {
   // AppState — pause on background, auto-resume only for background-caused pauses.
   // pausedByBackground distinguishes background-pause from manual HUD pause so
   // a manually paused game stays paused after the player backgrounds and returns.
+  //
+  // Note: initAuth() is intentionally NOT called here. Auth is bootstrapped in
+  // App.tsx before this component ever mounts — calling it here was the source
+  // of Bug B (listener leak) and Bug C (duplicate sign-ins). See auth-fix-plan.md.
   useEffect(() => {
     let pausedByBackground = false
-
-    initAuth()
-      .then((user) => {
-        log.info("firebase", "auth ready", { uid: user.uid })
-      })
-      .catch((err) => {
-        log.error("firebase", "auth failed", { error: String(err) })
-      })
 
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
