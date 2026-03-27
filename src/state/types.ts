@@ -1,4 +1,21 @@
-export type GamePhase = "idle" | "running" | "paused" | "gameover"
+// ---------------------------------------------------------------------------
+// GamePhase — canonical source of truth for all phase values.
+//
+// "home"        — HomeOverlay visible, game loop idle
+// "playing"     — game running, HUD visible
+// "gameover"    — GameOverOverlay visible, score frozen
+// "leaderboard" — LeaderboardOverlay visible (Phase 4)
+// "settings"    — SettingsOverlay visible (Phase 5)
+// "shop"        — ShopOverlay visible (Phase 5)
+//
+// Note: "paused" is NOT a phase — pause is handled via isPaused SharedValue
+// inside the HUD, orthogonal to phase. This keeps the worklet guard simple.
+//
+// Previous values "idle" | "running" | "paused" renamed to "home" | "playing"
+// to match GameScreen's actual local phase type and architecture doc §5.
+// appStore.gamePhase default updated to "home" accordingly.
+// ---------------------------------------------------------------------------
+export type GamePhase = "home" | "playing" | "gameover" | "leaderboard" | "settings" | "shop"
 
 export type PlatformType =
   | "static"
