@@ -84,14 +84,22 @@ export default function GameScreen() {
 
   // handlePlay — from HomeOverlay "Play" button.
   // Transitions to "playing" and starts the game loop.
+  // isPaused is reset explicitly here before restartRun() as a defensive
+  // measure — handleHome sets isPaused.value = true to idle the loop, and
+  // restartRun() resets it internally, but an explicit reset here makes the
+  // contract visible and guards against any future restartRun() refactor that
+  // might miss the reset.
   const handlePlay = useCallback(() => {
+    isPaused.value = false
     setPhase("playing")
     restartRun()
   }, [restartRun])
 
   // handlePlayAgain — from GameOverOverlay "Play Again" button.
   // Same as handlePlay — restarts the loop.
+  // isPaused reset matches handlePlay for the same defensive reason.
   const handlePlayAgain = useCallback(() => {
+    isPaused.value = false
     setPhase("playing")
     restartRun()
   }, [restartRun])
