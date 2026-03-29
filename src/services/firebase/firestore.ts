@@ -10,7 +10,7 @@ export const getDocument = async (collection: string, id: string) => {
 export const setDocument = async (
   collection: string,
   id: string,
-    data: any
+  data: Record<string, unknown>,
 ) => {
   const ref = doc(db, collection, id)
   return setDoc(ref, data)
@@ -19,7 +19,7 @@ export const setDocument = async (
 export const updateDocument = async (
   collection: string,
   id: string,
-    data: any
+  data: Record<string, unknown>,
 ) => {
   const ref = doc(db, collection, id)
   return updateDoc(ref, data)
