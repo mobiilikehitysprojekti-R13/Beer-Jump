@@ -67,9 +67,9 @@ export const FLOOR_PLATFORMS = 6 // platforms in the starting floor row (= PLATF
 export const PLATFORMS_PER_ROW = 2 // platforms placed per regular row PLAYTEST: paired
 export const PLATFORM_ROW_HEIGHT = 200 // px between rows fits within playtest jump peak of 722px
 
-// PLATFORM_WIDTH is an approximation for GameCanvas rendering only.
+//PLATFORM_WIDTH_APPROX is an approximation for GameCanvas rendering only.
 // Collision and generation always use the exact runtime value SCREEN_WIDTH / PLATFORM_COLUMNS.
-export const PLATFORM_WIDTH = 65 // px approximate never use for collision math
+export const PLATFORM_WIDTH_APPROX = 65 // px approximate never use for collision math
 export const PLATFORM_HEIGHT = 18 // px platform thickness (visual)
 
 // Legacy gap constants reserved for DifficultyScaler in Phase 2

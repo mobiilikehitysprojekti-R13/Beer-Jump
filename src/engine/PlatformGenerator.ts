@@ -13,7 +13,7 @@ import {
 // ---------------------------------------------------------------------------
 // Column layout
 //
-// Platforms tile edge-to-edge within their column. PLATFORM_WIDTH in
+// Platforms tile edge-to-edge within their column.PLATFORM_WIDTH_APPROX in
 // gameConfig.ts is an approximation for rendering only. Collision and
 // generation always use the exact runtime value SCREEN_WIDTH / PLATFORM_COLUMNS.
 // ---------------------------------------------------------------------------
