@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
 import { submitScore } from '../../services/firebase/leaderboard'
 
@@ -11,6 +12,27 @@ import { submitScore } from '../../services/firebase/leaderboard'
 // component stays purely presentational.
 // Visual design is identical to the old GameOverScreen and will be replaced
 // with pixel art assets in Phase 3.
+//
+// Score submission:
+//   onGameOver() is defined above the component (avoids temporal dead zone
+//   from const hoisting) and called inside useEffect — never in the render
+//   body. This ensures exactly one Firestore write per mount, regardless of
+//   how many times React re-renders the component (Strict Mode, parent
+//   updates, etc.).
+//   TODO: replace hardcoded level/xp/coins/platform with values from
+//   useAppStore.getState() and Platform.OS once progression is wired up.
+
+// Defined above the component so the reference is fully initialised before
+// the component function body executes (const is not hoisted like function).
+const onGameOver = async (score: number) => {
+  await submitScore(score, {
+    level: 3,
+    xp: 120,
+    coins: 50,
+    platform: 'ios',
+  })
+}
+
 type Props = {
   score: number
   personalBest: number
@@ -24,7 +46,13 @@ export function GameOverOverlay({
   onPlayAgain,
   onHome,
 }: Props) {
-  onGameOver(score) // submit score to Firebase (async, no await needed)
+  // Submit score once on mount — useEffect guarantees this never runs during
+  // render, and the empty dep array guarantees it fires exactly once per
+  // GameOverOverlay mount, not on subsequent re-renders.
+  useEffect(() => {
+    onGameOver(score)
+  }, [])
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Game Over</Text>
@@ -45,15 +73,6 @@ export function GameOverOverlay({
       </TouchableOpacity>
     </View>
   )
-}
-
-const onGameOver = async (score: number) => {
-  await submitScore(score, {
-    level: 3,
-    xp: 120,
-    coins: 50,
-    platform: 'ios',
-  })
 }
 
 const styles = StyleSheet.create({
