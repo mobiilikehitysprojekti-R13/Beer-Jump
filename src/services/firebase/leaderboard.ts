@@ -32,7 +32,7 @@ export const submitScore = async (
   // was bypassed — log and bail rather than attempting a broken sign-in.
   const user = getUser()
   if (!user) {
-    log.error("firebase", "submitScore: getUser() returned null — auth bootstrap may not have completed,{ score }")
+    log.error("firebase", "submitScore: getUser() returned null — auth bootstrap may not have completed", { score })
     return
   }
 
