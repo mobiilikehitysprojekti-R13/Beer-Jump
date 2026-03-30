@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
 import { useAppStore } from "../../state/appStore"
 import { LeaderboardOverlay } from './LeaderboardOverlay'
+import { SettingsOverlay } from './SettingsOverlay'
+import { ShopOverlay } from './ShopOverlay'
+import { InventoryOverlay } from './InventoryOverlay'
 
 // HomeOverlay
 // Renders the home / main menu UI as a full-screen View overlay inside
@@ -25,6 +28,9 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
 export function HomeOverlay({ onPlay }: Props) {
   const personalBest = useAppStore(selectPersonalBest)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showShop, setShowShop] = useState(false)
+  const [showInventory, setShowInventory] = useState(false)
 
   return (
     <View style={styles.container}>
@@ -38,10 +44,26 @@ export function HomeOverlay({ onPlay }: Props) {
         <Text style={styles.buttonText}>Leaderboard</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.button} onPress={() => setShowSettings(true)}>
+        <Text style={styles.buttonText}>Settings</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.button} onPress={() => setShowShop(true)}>
+        <Text style={styles.buttonText}>Shop</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.button} onPress={() => setShowInventory(true)}>
+        <Text style={styles.buttonText}>Inventory</Text>
+      </TouchableOpacity>
+
+
       <LeaderboardOverlay
         visible={showLeaderboard}
         onClose={() => setShowLeaderboard(false)}
       />
+      <SettingsOverlay visible={showSettings} onClose={() => setShowSettings(false)} />
+      <ShopOverlay visible={showShop} onClose={() => setShowShop(false)} />
+      <InventoryOverlay visible={showInventory} onClose={() => setShowInventory(false)} />
     </View>
   )
 }
