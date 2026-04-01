@@ -14,23 +14,27 @@ import { InventoryOverlay } from './InventoryOverlay'
 // Props:
 //   onPlay — called when the player presses Play. GameScreen transitions
 //            game phase to "playing" and calls restartRun().
+//   onShowLeaderboard — called when the player presses Leaderboard.
+//   onShowSettings — called when the player presses Settings.
+//   onShowShop — called when the player presses Shop.
+//   onShowInventory — called when the player presses Inventory.
 // personalBest is read directly from Zustand here — this overlay is
 // purely presentational and not in the hot render path of the game loop.
 // Visual design is identical to HomeScreen and will be replaced with
 // pixel art assets in Phase 3.
 type Props = {
   onPlay: () => void
+  onShowLeaderboard: () => void
+  onShowSettings: () => void
+  onShowShop: () => void
+  onShowInventory: () => void
 }
 
 const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
   s.personalBest
 
-export function HomeOverlay({ onPlay }: Props) {
+export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowShop, onShowInventory }: Props) {
   const personalBest = useAppStore(selectPersonalBest)
-  const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [showShop, setShowShop] = useState(false)
-  const [showInventory, setShowInventory] = useState(false)
 
   return (
     <View style={styles.container}>
@@ -40,30 +44,23 @@ export function HomeOverlay({ onPlay }: Props) {
         <Text style={styles.buttonText}>Play</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={() => setShowLeaderboard(true)}>
+      <TouchableOpacity style={styles.button} onPress={onShowLeaderboard}>
         <Text style={styles.buttonText}>Leaderboard</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={() => setShowSettings(true)}>
+      <TouchableOpacity style={styles.button} onPress={onShowSettings}>
         <Text style={styles.buttonText}>Settings</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={() => setShowShop(true)}>
+      <TouchableOpacity style={styles.button} onPress={onShowShop}>
         <Text style={styles.buttonText}>Shop</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={() => setShowInventory(true)}>
+      <TouchableOpacity style={styles.button} onPress={onShowInventory}>
         <Text style={styles.buttonText}>Inventory</Text>
       </TouchableOpacity>
 
 
-      <LeaderboardOverlay
-        visible={showLeaderboard}
-        onClose={() => setShowLeaderboard(false)}
-      />
-      <SettingsOverlay visible={showSettings} onClose={() => setShowSettings(false)} />
-      <ShopOverlay visible={showShop} onClose={() => setShowShop(false)} />
-      <InventoryOverlay visible={showInventory} onClose={() => setShowInventory(false)} />
     </View>
   )
 }

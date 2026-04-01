@@ -1,34 +1,48 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, TextInput } from "react-native"
 import { useAppStore } from "../../state/appStore"
 
 // NameInputOverlay
 // Renders the name input UI as a full-screen View overlay inside
-// GameScreen. Shown on first start when hasSetName is false.
+// GameScreen. Can be used for first-time setup or changing name.
 // Props:
+//   initialName — the current name to pre-fill (optional)
 //   onNameSubmit — called when the player enters a name and presses Submit.
-//                  Sets playerName and hasSetName in store.
+//                  Receives the new name as parameter.
+//   title — custom title (optional)
+//   subtitle — custom subtitle (optional)
+//   buttonText — custom button text (optional)
 type Props = {
-  onNameSubmit: () => void
+  initialName?: string
+  onNameSubmit: (name: string) => void
+  title?: string
+  subtitle?: string
+  buttonText?: string
 }
 
-export function NameInputOverlay({ onNameSubmit }: Props) {
-  const [name, setName] = useState('')
-  const setPlayerName = useAppStore((s) => s.setPlayerName)
-  const setHasSetName = useAppStore((s) => s.setHasSetName)
+export function NameInputOverlay({
+  initialName = '',
+  onNameSubmit,
+  title = 'Welcome to Beer Jump!',
+  subtitle = 'Enter your player name:',
+  buttonText = 'Start Playing'
+}: Props) {
+  const [name, setName] = useState(initialName)
+
+  useEffect(() => {
+    setName(initialName)
+  }, [initialName])
 
   const handleSubmit = () => {
     if (name.trim()) {
-      setPlayerName(name.trim())
-      setHasSetName(true)
-      onNameSubmit()
+      onNameSubmit(name.trim())
     }
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to Beer Jump!</Text>
-      <Text style={styles.subtitle}>Enter your player name:</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.subtitle}>{subtitle}</Text>
       <TextInput
         style={styles.input}
         value={name}
@@ -43,7 +57,7 @@ export function NameInputOverlay({ onNameSubmit }: Props) {
         onPress={handleSubmit}
         disabled={!name.trim()}
       >
-        <Text style={styles.buttonText}>Start Playing</Text>
+        <Text style={styles.buttonText}>{buttonText}</Text>
       </TouchableOpacity>
     </View>
   )

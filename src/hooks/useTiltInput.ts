@@ -1,6 +1,8 @@
 import { useEffect } from "react"
 import { Accelerometer } from "expo-sensors"
+import { Platform } from "react-native"
 import { gyroX } from "../state/gameValues"
+import { useAppStore } from "../state/appStore"
 
 // ---------------------------------------------------------------------------
 // useTiltInput
@@ -26,10 +28,10 @@ import { gyroX } from "../state/gameValues"
 //     ~-1g  = phone tilted fully to the left  (left side down)
 //     ~+1g  = phone tilted fully to the right (right side down)
 //
-//   The value is negated before writing to gyroX because on Android the
-//   accelerometer X axis is inverted relative to the expected convention
-//   (tilt right = positive vx). If direction feels wrong on a specific device,
-//   change TILT_INVERT in gameConfig.ts rather than editing this file.
+//   Platform-specific handling:
+//     Android: negate the X value (x is inverted relative to game convention)
+//     iOS: use X value directly
+//   If tilt direction feels wrong on a specific device, check platform handling.
 //
 // UPDATE RATE:
 //   Accelerometer.setUpdateInterval(16) requests 60fps updates.
@@ -52,17 +54,25 @@ export function useTiltInput() {
   useEffect(() => {
     let sub: ReturnType<typeof Accelerometer.addListener> | null = null
 
+    const gyroEnabled = useAppStore.getState().gyroEnabled
+
+    if (!gyroEnabled) {
+      console.log("useTiltInput", "gyro disabled in settings, skipping accelerometer listener")
+      return
+    }
+
     try {
+      console.log("useTiltInput", "initializing accelerometer listener", { platform: Platform.OS })
       Accelerometer.setUpdateInterval(16) // request ~60fps — not capped like gyro
       sub = Accelerometer.addListener(({ x }) => {
-        // Negate: accelerometer X is inverted on Android relative to game convention.
-        // Tilt right (right side down) → x is positive → we want vx positive → negate.
-        // If tilt direction feels wrong, flip TILT_INVERT in gameConfig.ts.
-        gyroX.value = -x
+        // Handle platform-specific tilt inversion
+        // iOS accelerometer X axis needs different handling than Android
+        const tiltValue = Platform.OS === 'ios' ? x : -x
+        gyroX.value = tiltValue
       })
-    } catch {
+    } catch (err) {
       // Device has no accelerometer — gyroX stays 0, touch controls still work
-      console.warn("useTiltInput: Accelerometer not available on this device")
+      console.warn("useTiltInput: Accelerometer not available on this device", err)
     }
 
     return () => {
