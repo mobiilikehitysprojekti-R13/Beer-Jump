@@ -39,8 +39,12 @@ export const submitScore = async (
   log.info("firebase", "submitScore called", { uid: user.uid, score })
 
   const existing = await getDocument(COLLECTION, user.uid)
+  // Get playerName from store
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useAppStore } = require("../../state/appStore")
+  const playerName = useAppStore.getState().playerName
   const data = {
-    playerName: 'Player', // you can replace this with a customizable name
+    playerName,
     score,
     timestamp: Timestamp.now(),
     ...extra,

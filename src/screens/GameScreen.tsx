@@ -8,6 +8,7 @@ import { HUD } from "../components/ui/HUD"
 import { TouchZones } from "../components/ui/TouchZones"
 import { HomeOverlay } from "../components/ui/HomeOverlay"
 import { GameOverOverlay } from "../components/ui/GameOverOverlay"
+import { NameInputOverlay } from "../components/ui/NameInputOverlay"
 import { isPaused } from "../state/gameValues"
 import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
@@ -25,6 +26,8 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
   s.personalBest
 const selectSensitivity = (s: ReturnType<typeof useAppStore.getState>) =>
   s.gyroSensitivity
+const selectHasSetName = (s: ReturnType<typeof useAppStore.getState>) =>
+  s.hasSetName
 
 // ---------------------------------------------------------------------------
 // GameScreen
@@ -60,6 +63,7 @@ export default function GameScreen() {
   const setPersonalBest = useAppStore(selectSetPersonalBest)
   const personalBest = useAppStore(selectPersonalBest)
   const sensitivity = useAppStore(selectSensitivity)
+  const hasSetName = useAppStore(selectHasSetName)
 
   const [phase, setPhase] = useState<GamePhase>("home")
   const [finalScore, setFinalScore] = useState(0)
@@ -174,8 +178,11 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Layer 4 — Home overlay */}
-      {phase === "home" && <HomeOverlay onPlay={handlePlay} />}
+      {/* Layer 4 — Name input overlay (first start only) */}
+      {phase === "home" && !hasSetName && <NameInputOverlay onNameSubmit={() => {}} />}
+
+      {/* Layer 5 — Home overlay */}
+      {phase === "home" && hasSetName && <HomeOverlay onPlay={handlePlay} />}
 
       {/* Layer 5 — Game over overlay */}
       {phase === "gameover" && (

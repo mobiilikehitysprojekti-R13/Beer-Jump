@@ -27,7 +27,10 @@ type AppStore = {
   authUID: string | null
   googleUID: string | null
   playerName: string
+  hasSetName: boolean
   setAuthUID: (uid: string) => void
+  setPlayerName: (name: string) => void
+  setHasSetName: (hasSet: boolean) => void
 
   // Progression stubs
   coins: number
@@ -72,7 +75,10 @@ export const useAppStore = create<AppStore>()(
       authUID: null,
       googleUID: null,
       playerName: "Player",
+      hasSetName: false,
       setAuthUID: (uid) => set({ authUID: uid }),
+      setPlayerName: (name) => set({ playerName: name }),
+      setHasSetName: (hasSet) => set({ hasSetName: hasSet }),
 
       // Progression stubs
       coins: 0,
@@ -94,6 +100,8 @@ export const useAppStore = create<AppStore>()(
         soundEnabled: s.soundEnabled,
         touchControlsEnabled: s.touchControlsEnabled,
         gyroSensitivity: s.gyroSensitivity,
+        hasSetName: s.hasSetName,
+        playerName: s.playerName,
       }),
     },
   ),
