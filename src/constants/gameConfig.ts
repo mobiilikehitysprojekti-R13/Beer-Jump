@@ -161,13 +161,38 @@ export const MAX_DELTA_TIME = 32 // ms per-frame deltaTime cap
 //   = 500 + 800 = 1300ms from Play/Play Again press.
 export const GAME_START_DELAY_MS = 500 // ms wait for screen transition before starting
 
+// PLATFORM ANIMATION
+//
+// Platforms are rendered procedurally as colored rectangles with Skia.
+// No sprite files required. Animations are continuous math, not frame steps.
+//
+// DISAPPEARING — sine wave opacity (all instances in unison via globalTime):
+//   opacity = 0.5 + 0.5 × sin(globalTime × 2π / DISAPPEAR_PERIOD_MS)
+//   Oscillates smoothly between 0.0 and 1.0 every DISAPPEAR_PERIOD_MS ms.
+//   Collision always active — the cycle is purely visual.
+//   Tune DISAPPEAR_PERIOD_MS to control how fast the platform fades in/out.
+//
+// BREAKABLE — linear alpha drain after first landing:
+//   opacity = 1.0 - (crumbleTimer / CRUMBLE_DELAY_MS)
+//   Fades from fully opaque to transparent over CRUMBLE_DELAY_MS ms,
+//   then deactivates. One bounce guaranteed before it disappears.
+//
+// FAKE — constant semi-transparent (FAKE_PLATFORM_ALPHA).
+//   Visually distinct from static — looks "ghostly". No animation.
+//
+// PLATFORM COLORS (hardcoded hex — game world colors, must not invert in dark mode):
+//   static:       #4CAF50  green
+//   moving:       #2196F3  blue
+//   fake:         #9E9E9E  grey
+//   disappearing: #FF9800  amber
+//   breakable:    #F44336  red
+export const DISAPPEAR_PERIOD_MS = 2000 // ms for one full opacity sine cycle
+export const FAKE_PLATFORM_ALPHA = 0.45 // constant opacity for fake platforms
 
 // (stubs, not yet active in gameplay)
 export const MAX_ENEMIES = 8
 export const MAX_POWER_UPS_ON_SCREEN = 3
 export const CRUMBLE_DELAY_MS = 300
-export const DISAPPEAR_VISIBLE_MS = 2000
-export const DISAPPEAR_FADE_MS = 500
 export const JETPACK_DURATION_MS = 5000
 export const PRETZEL_JUMP_MULTIPLIER = 3
 export const ROCKET_VELOCITY = -40
