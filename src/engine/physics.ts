@@ -10,6 +10,7 @@ import {
   PLAYER_HEIGHT,
   PLATFORM_COLUMNS,
   SCREEN_WIDTH,
+  CRUMBLE_DELAY_MS,
 } from "../constants/gameConfig"
 import { Platform } from "../state/types"
 
@@ -81,14 +82,73 @@ export function applyTouchInput(
 }
 
 // ---------------------------------------------------------------------------
+// tickMovingPlatform
+// Advances a moving platform along its patrol path each frame.
+// Mutates p.x and reverses p.moveDirection at each boundary.
+// Pure worklet function — no closures, no dynamic allocation.
+//
+// Called from gameTick for every active platform with type === "moving".
+// ---------------------------------------------------------------------------
+export function tickMovingPlatform(p: Platform, dt: number): void {
+  "worklet"
+  p.x += p.moveSpeed * p.moveDirection * dt
+
+  // Clamp and reverse at boundaries
+  if (p.x <= p.moveBoundaryLeft) {
+    p.x = p.moveBoundaryLeft
+    p.moveDirection = 1
+  } else if (p.x + COLLISION_PLATFORM_WIDTH >= p.moveBoundaryRight) {
+    p.x = p.moveBoundaryRight - COLLISION_PLATFORM_WIDTH
+    p.moveDirection = -1
+  }
+}
+
+// ---------------------------------------------------------------------------
+// tickBreakablePlatform
+// Advances the crumble timer on a triggered breakable platform.
+// When crumbleTimer reaches CRUMBLE_DELAY_MS the platform deactivates itself —
+// it becomes invisible and passable. recyclePlatforms will reposition it
+// as a new platform (any type) when it scrolls off camera.
+//
+// INVARIANT: BREAKABLE_FRAME_COUNT × BREAKABLE_FRAME_MS === CRUMBLE_DELAY_MS
+//   4 × 75 = 300 ms ✓  (see gameConfig.ts Section 10)
+//   The animation is guaranteed to complete exactly as the platform deactivates.
+//
+// Called from gameTick for every active platform with type === "breakable"
+// and p.crumbling === true.
+// ---------------------------------------------------------------------------
+export function tickBreakablePlatform(p: Platform, dt: number): void {
+  "worklet"
+  p.crumbleTimer += dt
+
+  if (p.crumbleTimer >= CRUMBLE_DELAY_MS) {
+    // Deactivate — invisible, no collision, will be recycled when off-screen
+    p.active = false
+    p.crumbling = false
+    p.crumbleTimer = 0
+  }
+}
+
+// ---------------------------------------------------------------------------
 // checkPlatformCollision
-// Returns true if BeerGuy's feet crossed the top edge of any active platform
+// Returns true if BeerGuy's feet crossed the top edge of a collidable platform
 // this frame. Only checked when falling (velocityY > 0) — one-way platforms.
 //
 // Accepts prevPy — playerY from BEFORE the move step this frame. This gives
 // the exact previous feet position without any approximation, correctly
 // catching cases where BeerGuy moves fast enough to tunnel through a platform
 // in a single frame.
+//
+// Per-type collision rules:
+//   "static"       — always collidable while active
+//   "moving"       — always collidable while active (no velocity inheritance needed)
+//   "disappearing" — always collidable while active (cycle is purely visual)
+//   "fake"         — never collidable (BeerGuy always falls through)
+//   "breakable"    — collidable only when NOT yet crumbling.
+//                    On first hit: set p.crumbling = true so this frame's bounce
+//                    registers normally, and collision is skipped on all future
+//                    frames for this instance. The caller (gameTick) then fires
+//                    JUMP_VELOCITY as usual — BeerGuy gets exactly one jump.
 // ---------------------------------------------------------------------------
 export function checkPlatformCollision(
   px: number,
@@ -106,11 +166,25 @@ export function checkPlatformCollision(
   for (let i = 0; i < platforms.length; i++) {
     const p = platforms[i]
     if (!p.active) continue
+
+    // Fake platforms — always fall through
+    if (p.type === 'fake') continue
+
+    // Breakable platforms — skip if already crumbling (bounce already happened)
+    if (p.type === 'breakable' && p.crumbling) continue
+
     // Horizontal overlap check
     if (px + PLAYER_WIDTH <= p.x || px >= p.x + COLLISION_PLATFORM_WIDTH)
       continue
     // Vertical: feet crossed the platform top edge this frame
-    if (prevFeetY <= p.y && feetY >= p.y) return true
+    if (prevFeetY <= p.y && feetY >= p.y) {
+      // Trigger breakable crumble on first hit — collision registers this
+      // frame so BeerGuy bounces, then crumbling = true disables future hits.
+      if (p.type === 'breakable') {
+        p.crumbling = true
+      }
+      return true
+    }
   }
   return false
 }
