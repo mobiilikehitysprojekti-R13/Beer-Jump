@@ -10,6 +10,8 @@ import {
   applyGyroInput,
   applyTouchInput,
   checkPlatformCollision,
+  tickMovingPlatform,
+  tickBreakablePlatform,
   wrapHorizontal,
 } from "./physics"
 import * as GV from "../state/gameValues"
@@ -24,6 +26,7 @@ import {
   INPUT_GRACE_MS,
   MAX_DELTA_TIME,
   GAME_START_DELAY_MS,
+  PLATFORM_POOL_SIZE,
 } from "../constants/gameConfig"
 import { log, logFromWorklet } from "../utils/logger"
 
@@ -90,7 +93,13 @@ export function useGameLoop(
         })
       }
 
-      // 3. Input — timeSinceFirstFrame null on frame 0, default to 0.
+      // 3. Global animation clock — written before any rendering reads it.
+      //    GameCanvas's AnimatedPlatformImage components subscribe to
+      //    GV.globalTime via useDerivedValue to drive the disappearing
+      //    platform spritesheet cycle. Reset to 0 by restartRun Step B.
+      GV.globalTime.value = frameInfo.timeSinceFirstFrame ?? 0
+
+      // 4. Input — timeSinceFirstFrame null on frame 0, default to 0.
       //    Frame 0 treated as t=0ms: input suppressed, FIRST FRAME log fires.
       const timeSinceStart = frameInfo.timeSinceFirstFrame ?? 0
       const inputActive = timeSinceStart > INPUT_GRACE_MS
@@ -153,10 +162,10 @@ export function useGameLoop(
         })
       }
 
-      // 4. Gravity
+      // 5. Gravity
       GV.velocityY.value = applyGravity(GV.velocityY.value, dt)
 
-      // 5. Move — capture prevPy before move for accurate collision (Key Rule 12)
+      // 6. Move — capture prevPy before move for accurate collision (Key Rule 12)
       const prevPy = GV.playerY.value
       GV.playerX.value = wrapHorizontal(
         GV.playerX.value + GV.velocityX.value * dt,
@@ -168,7 +177,22 @@ export function useGameLoop(
         logFromWorklet("physics", "screen wrap", { newX: wrappedX })
       }
 
-      // 6. Platform collision
+      // 7. Platform tick loop — moving patrol + breakable crumble timer.
+      //    No dynamic allocation. Mutates platform objects in place.
+      //    Disappearing platforms have no per-instance tick — their animation
+      //    is derived from GV.globalTime in GameCanvas on the UI thread.
+      const plats = GV.platforms.value
+      for (let i = 0; i < PLATFORM_POOL_SIZE; i++) {
+        const p = plats[i]
+        if (!p.active) continue
+        if (p.type === "moving") {
+          tickMovingPlatform(p, dt)
+        } else if (p.type === "breakable" && p.crumbling) {
+          tickBreakablePlatform(p, dt)
+        }
+      }
+
+      // 8. Platform collision
       const hit = checkPlatformCollision(
         GV.playerX.value,
         GV.playerY.value,
@@ -189,13 +213,13 @@ export function useGameLoop(
         })
       }
 
-      // 7. Camera — advance when player enters upper 40% of visible screen
+      // 9. Camera — advance when player enters upper 40% of visible screen
       const scrollThreshold = GV.playerY.value - SCREEN_HEIGHT * 0.4
       if (scrollThreshold < GV.cameraY.value) {
         GV.cameraY.value = scrollThreshold
       }
 
-      // 8. Score
+      // 10. Score
       GV.score.value = Math.floor(Math.abs(GV.cameraY.value) / SCORE_PER_UNIT)
 
       const newScore = GV.score.value
@@ -207,10 +231,10 @@ export function useGameLoop(
         })
       }
 
-      // 9. Recycle off-screen platforms
+      // 11. Recycle off-screen platforms
       recyclePlatforms(GV.platforms.value, GV.cameraY.value, GV.rngState.value)
 
-      // 10. Death check — playerY > bottom edge of visible screen
+      // 12. Death check — playerY > bottom edge of visible screen
       if (GV.playerY.value > GV.cameraY.value + SCREEN_HEIGHT) {
         GV.isDead.value = true
         logFromWorklet("gameLoop", "death triggered", {
@@ -246,18 +270,14 @@ export function useGameLoop(
   // Sequence:
   //   Step 0 — deactivate any currently active callback
   //   Step A — pause + clear dead flag
-  //   Step B — reset all primitive shared values
+  //   Step B — reset all primitive shared values (including globalTime)
   //   Step C — reset RNG state on UI thread
   //   Step D — reset platform pool on UI thread, then unpause
   //   Step E — activate frame callback after GAME_START_DELAY_MS
   //
-  // The GAME_START_DELAY_MS setTimeout in Step E allows the screen transition
-  // animation (Play button press → game canvas appearing) to complete before
-  // BeerGuy starts moving. INPUT_GRACE_MS then suppresses tilt/touch input
-  // for the same duration after the callback activates.
-  //
-  // Pool-ready guarantee: isPaused is set false inside modify() on the UI
-  // thread (Step D), so the worklet cannot tick until the pool is written.
+  // globalTime is reset to 0 in Step B so every run starts with all
+  // disappearing platforms at the beginning of Phase D (fully visible).
+  // This is the most forgiving starting state for the player.
   // -------------------------------------------------------------------------
   const restartRun = useCallback(() => {
     // Step 0: deactivate — prevents reading partially-reset state
@@ -270,7 +290,7 @@ export function useGameLoop(
     GV.isPaused.value = true
     GV.isDead.value = false
 
-    // Step B
+    // Step B — reset all primitives including globalTime
     GV.seed.value = newSeed
     GV.playerX.value = SCREEN_WIDTH / 2 - PLAYER_WIDTH / 2
     GV.playerY.value = SCREEN_HEIGHT - 160 - PLAYER_HEIGHT // feet flush with p0
@@ -281,6 +301,7 @@ export function useGameLoop(
     GV.gyroX.value = 0 // zero stale tilt from previous run
     GV.touchLeft.value = false
     GV.touchRight.value = false
+    GV.globalTime.value = 0
 
     log.info("gameLoop", "restartRun — primitives set", {
       seed: newSeed,
@@ -323,19 +344,13 @@ export function useGameLoop(
     }, GAME_START_DELAY_MS)
   }, [frameCallback])
 
-  // No mount useEffect — restartRun() is called only by explicit player action
-  // (Play / Play Again buttons in GameScreen). GameScreen never unmounts, so
-  // there is no mount/unmount lifecycle to manage here.
-  //
-  // No cleanup useEffect — Reanimated's internal useEffect handles
-  // unregistration via its own memoised callback ID.
-
   return {
     playerX: GV.playerX,
     playerY: GV.playerY,
     cameraY: GV.cameraY,
     platforms: GV.platforms,
     score: GV.score,
+    globalTime: GV.globalTime,
     restartRun,
   }
 }

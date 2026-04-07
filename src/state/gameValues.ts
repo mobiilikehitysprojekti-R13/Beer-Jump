@@ -46,6 +46,20 @@ export const rngState = makeMutable<number[]>([0, 1])
 export const platforms = makeMutable<Platform[]>(createPlatformPool())
 
 // ---------------------------------------------------------------------------
+// Global animation clock
+// Written every frame in gameTick: globalTime.value = timeSinceFirstFrame.
+// Reset to 0 in restartRun Step B.
+//
+// Used by AnimatedPlatformImage in GameCanvas to drive the disappearing
+// platform spritesheet cycle. All disappearing platform slots read the same
+// value and arrive at the same frame index independently — they animate in
+// unison without any per-instance timer state on the Platform object.
+//
+// Written exclusively from the UI thread worklet (useFrameCallback).
+// ---------------------------------------------------------------------------
+export const globalTime = makeMutable(0)
+
+// ---------------------------------------------------------------------------
 // Game control flags
 // These are the shared values written from the JS thread:
 //   isPaused       — HUD pause button / AppState background listener

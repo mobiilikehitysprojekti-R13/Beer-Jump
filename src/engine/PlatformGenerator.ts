@@ -1,4 +1,4 @@
-import { Platform } from "../state/types"
+import { Platform, PlatformType } from "../state/types"
 import {
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
@@ -61,15 +61,58 @@ function nextStartColumn(s: number, prevCol: number): [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
-// setPlatform
-// Writes all fields of a Platform object in place.
-// Extracted to avoid repeating the same field assignments everywhere.
+// pickType
+// Selects a platform type from the regular-row probability table using one
+// LCG step. Returns [nextSeed, type].
+//
+// Type mix (placeholder — DifficultyScaler will override this in Phase 2):
+//   55% static
+//   20% moving
+//   10% breakable
+//   10% disappearing
+//    5% fake
+//
+// Floor row platforms always use "static" — BeerGuy spawns above the floor
+// and the first collision must always succeed.
 // ---------------------------------------------------------------------------
-function setPlatform(p: Platform, x: number, y: number): void {
+function pickType(s: number): [number, PlatformType] {
   "worklet"
+  let rand: number
+  ;[s, rand] = lcgNext(s)
+  let type: PlatformType
+  if (rand < 0.55) {
+    type = 'static'
+  } else if (rand < 0.75) {
+    type = 'moving'
+  } else if (rand < 0.85) {
+    type = 'breakable'
+  } else if (rand < 0.95) {
+    type = 'disappearing'
+  } else {
+    type = 'fake'
+  }
+  return [s, type]
+}
+
+// ---------------------------------------------------------------------------
+// setPlatform
+// Writes all fields of a Platform object in place, then applies type-specific
+// field overrides. Always resets crumbling/crumbleTimer so recycled breakable
+// platforms start clean.
+//
+// Moving platform patrol boundaries are set to ±1 column from the spawn
+// column so the platform stays within a predictable horizontal range.
+// moveSpeed is hardcoded here as a starting tuning value — DifficultyScaler
+// will pass a range in Phase 2.
+// ---------------------------------------------------------------------------
+function setPlatform(p: Platform, x: number, y: number, type: PlatformType ): void {
+  "worklet"
+  const cw = colWidth()
+
+  // Base reset — all fields to clean defaults
   p.x = x
   p.y = y
-  p.type = "static"
+  p.type = type
   p.active = true
   p.moveDirection = 1
   p.moveSpeed = 0
@@ -80,6 +123,23 @@ function setPlatform(p: Platform, x: number, y: number): void {
   p.opacity = 1
   p.visible = true
   p.visibleTimer = 0
+
+  // Type-specific overrides
+  if (type === 'moving') {
+    // Patrol one column left and one column right of spawn position,
+    // clamped so the platform never leaves the screen.
+    const patrolLeft = x - cw
+    const patrolRight = x + cw * 2 // +2 because platform itself is 1 cw wide
+    p.moveBoundaryLeft = patrolLeft < 0 ? 0 : patrolLeft
+    p.moveBoundaryRight =
+      patrolRight > SCREEN_WIDTH ? SCREEN_WIDTH : patrolRight
+    p.moveSpeed = 0.12 // units/ms — tunable, roughly half of player walk speed
+    p.moveDirection = 1
+  }
+  // disappearing: no per-instance fields — animation driven by GV.globalTime
+  // breakable: crumbling/crumbleTimer already reset above
+  // fake: no overrides needed
+  // static: no overrides needed
 }
 
 // ---------------------------------------------------------------------------
@@ -118,20 +178,47 @@ export function createPlatformPool(): Platform[] {
 // Layout:
 //   Indices 0..FLOOR_PLATFORMS-1:
 //     Floor row — all PLATFORM_COLUMNS platforms side-by-side at floorY,
-//     spanning the full screen width. BeerGuy spawns above this and lands
-//     on it immediately on frame 0.
+//     always "static". BeerGuy spawns above this and lands on it immediately.
 //
 //   Indices FLOOR_PLATFORMS..PLATFORM_POOL_SIZE-1:
 //     Regular rows — PLATFORMS_PER_ROW slots consumed per row.
 //     Each row sits PLATFORM_ROW_HEIGHT above the previous.
-//     Platforms in a row occupy PLATFORMS_PER_ROW consecutive columns
-//     starting from a randomly chosen start column (nextStartColumn ensures
-//     they fit without wrapping and differ from the previous row).
+//     Platform type is chosen by pickType() using the LCG.
 //
 // Pool constraint check (not enforced at runtime, verify when tuning):
 //   (PLATFORM_POOL_SIZE - FLOOR_PLATFORMS) must be divisible by PLATFORMS_PER_ROW
 //   Current: (120 - 6) = 114, 114 / 2 = 57 rows ✓
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// safeRowTypes
+// Ensures a row's type array never leaves the player with zero landable
+// platforms. Called after pickType() assigns all slots in a row.
+//
+// Rule: if every slot in the row is "fake", force the first slot to "static".
+// A single fake platform per row is intentional game design — the player can
+// jump over it. An all-fake row is an unwinnable gap: the player has no
+// platform to land on regardless of horizontal position.
+//
+// When PLATFORMS_PER_ROW = 1 (NORMAL mode), this never triggers because a
+// single "fake" is always one slot, not "all slots". The guard is only
+// meaningful at PLATFORMS_PER_ROW ≥ 2.
+//
+// types[] is mutated in place — avoids allocation inside a worklet.
+// ---------------------------------------------------------------------------
+function safeRowTypes(types: PlatformType[]): void {
+  'worklet'
+  let allFake = true
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] !== 'fake') {
+      allFake = false
+      break
+    }
+  }
+  if (allFake) {
+    types[0] = 'static'
+  }
+}
+
 export function resetPlatforms(pool: Platform[], seed: number): void {
   "worklet"
   let s = seed
@@ -140,14 +227,19 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
   const floorY = SCREEN_HEIGHT - 160
   const cw = colWidth()
 
-  // Floor row — all PLATFORM_COLUMNS platforms side by side
+  // Floor row — always static (BeerGuy must land here reliably on spawn)
   for (let col = 0; col < FLOOR_PLATFORMS; col++) {
-    setPlatform(pool[col], col * cw, floorY)
+    setPlatform(pool[col], col * cw, floorY, 'static')
   }
 
-  // Regular rows — PLATFORMS_PER_ROW consecutive platforms per row
+  // Regular rows — type chosen per-platform by pickType(), then validated
+  // by safeRowTypes to prevent all-fake rows.
   let currentY = floorY
   let prevStartCol = 0
+
+  // Reusable type buffer — fixed length, no dynamic allocation.
+  // Array literal is safe here; this is run-start init, not per-frame.
+  const rowTypes: PlatformType[] = ['static', 'static']
 
   let poolIndex = FLOOR_PLATFORMS
   while (poolIndex + PLATFORMS_PER_ROW <= PLATFORM_POOL_SIZE) {
@@ -155,11 +247,22 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
     ;[s, rand, startCol] = nextStartColumn(s, prevStartCol)
     currentY -= PLATFORM_ROW_HEIGHT
 
+    // Pick types for all slots in this row
+    for (let offset = 0; offset < PLATFORMS_PER_ROW; offset++) {
+      let type: PlatformType
+      ;[s, type] = pickType(s)
+      rowTypes[offset] = type
+    }
+
+    // Guarantee at least one landable platform per row
+    safeRowTypes(rowTypes)
+
     for (let offset = 0; offset < PLATFORMS_PER_ROW; offset++) {
       setPlatform(
         pool[poolIndex + offset],
         columnX(startCol + offset),
         currentY,
+        rowTypes[offset],
       )
     }
 
@@ -177,19 +280,22 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
 // one PLATFORM_ROW_HEIGHT higher. Platforms are recycled in groups of
 // PLATFORMS_PER_ROW to maintain the paired layout.
 //
+// setPlatform fully resets all fields including crumbling/crumbleTimer, so
+// a deactivated breakable platform that gets recycled starts completely clean
+// regardless of what type it is assigned.
+//
+// The offscreen check uses p.y regardless of p.active — deactivated breakable
+// platforms (active = false) still have a valid world-Y and will be recycled
+// normally when they scroll off camera.
+//
+// colWidth() is hoisted above the recycle loop — it is a constant for the
+// lifetime of a run (screen dimensions don't change) but calling it inside
+// the inner loop per recycled platform was a repeated division that adds up
+// across many recycle events.
+//
 // RNG state (rngState[]):
 //   [0] — LCG seed (persisted across frames)
-//   [1] — start column of the most recently placed row (persisted so
-//          nextStartColumn never repeats a column at a frame boundary)
-//
-// Recycling strategy:
-//   Platforms are recycled in pool-index order. Because floor platforms
-//   (indices 0..FLOOR_PLATFORMS-1) will eventually scroll off, they are
-//   recycled as normal paired rows — correct behaviour.
-//
-//   To recycle in pairs we advance i by PLATFORMS_PER_ROW each iteration.
-//   If a platform at index i is off-screen, all PLATFORMS_PER_ROW siblings
-//   in that row are recycled together to the same new Y position.
+//   [1] — start column of the most recently placed row
 // ---------------------------------------------------------------------------
 export function recyclePlatforms(
   platforms: Platform[],
@@ -199,10 +305,12 @@ export function recyclePlatforms(
   "worklet"
   const offscreenThreshold = cameraY + SCREEN_HEIGHT * 1.5
 
-  // Find the highest active platform (smallest world-Y)
+  // Find the highest platform Y (smallest world-Y).
+  // Includes inactive platforms so deactivated breakables don't cause
+  // new rows to spawn at a stale high-water mark.
   let minY = cameraY
   for (let i = 0; i < platforms.length; i++) {
-    if (platforms[i].active && platforms[i].y < minY) {
+    if (platforms[i].y < minY) {
       minY = platforms[i].y
     }
   }
@@ -211,19 +319,32 @@ export function recyclePlatforms(
   let prevStartCol = rngState[1] !== undefined ? rngState[1] : 0
   let rand: number
 
+  // Hoisted — constant for the run, avoids repeated division per recycle event
+  const cw = colWidth()
+
   const step = PLATFORMS_PER_ROW
 
+  // Reusable type buffer — fixed length, no dynamic allocation.
+  const rowTypes: PlatformType[] = ['static', 'static']
+
   for (let i = 0; i + step <= platforms.length; i += step) {
-    // Use the first platform in the group as the representative for off-screen check
+    // Use world-Y of the first slot in the group regardless of active state
     if (platforms[i].y > offscreenThreshold) {
       let startCol: number
       ;[s, rand, startCol] = nextStartColumn(s, prevStartCol)
 
       const newY = minY - PLATFORM_ROW_HEIGHT
-      const cw = colWidth()
+
+      // Pick types, then guarantee at least one landable platform
+      for (let offset = 0; offset < step; offset++) {
+        let type: PlatformType
+        ;[s, type] = pickType(s)
+        rowTypes[offset] = type
+      }
+      safeRowTypes(rowTypes)
 
       for (let offset = 0; offset < step; offset++) {
-        setPlatform(platforms[i + offset], (startCol + offset) * cw, newY)
+        setPlatform(platforms[i + offset], (startCol + offset) * cw, newY, rowTypes[offset] )
       }
 
       minY = newY

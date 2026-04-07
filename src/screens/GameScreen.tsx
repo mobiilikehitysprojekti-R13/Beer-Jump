@@ -53,8 +53,6 @@ const selectSensitivity = (s: ReturnType<typeof useAppStore.getState>) =>
 //   Home       → "home"    (does NOT call restartRun() — loop stays idle)
 //
 // restartRun() is called ONLY on explicit Play / Play Again — never on mount.
-// This eliminates all BUG-9 vectors: no mount-triggered callback activation,
-// no stale setTimeout races, no re-registration on Home navigation.
 // ---------------------------------------------------------------------------
 export default function GameScreen() {
   const setPersonalBest = useAppStore(selectSetPersonalBest)
@@ -79,16 +77,10 @@ export default function GameScreen() {
     [setPersonalBest],
   )
 
-  const { playerX, playerY, cameraY, platforms, score, restartRun } =
+  const { playerX, playerY, cameraY, platforms, score, globalTime, restartRun } =
     useGameLoop(onGameOver, sensitivity)
 
   // handlePlay — from HomeOverlay "Play" button.
-  // Transitions to "playing" and starts the game loop.
-  // isPaused is reset explicitly here before restartRun() as a defensive
-  // measure — handleHome sets isPaused.value = true to idle the loop, and
-  // restartRun() resets it internally, but an explicit reset here makes the
-  // contract visible and guards against any future restartRun() refactor that
-  // might miss the reset.
   const handlePlay = useCallback(() => {
     isPaused.value = false
     setPhase("playing")
@@ -96,8 +88,6 @@ export default function GameScreen() {
   }, [restartRun])
 
   // handlePlayAgain — from GameOverOverlay "Play Again" button.
-  // Same as handlePlay — restarts the loop.
-  // isPaused reset matches handlePlay for the same defensive reason.
   const handlePlayAgain = useCallback(() => {
     isPaused.value = false
     setPhase("playing")
@@ -105,8 +95,7 @@ export default function GameScreen() {
   }, [restartRun])
 
   // handleHome — from GameOverOverlay "Home" button.
-  // Returns to home phase. Does NOT call restartRun() — the loop stays idle
-  // and the canvas shows whatever state it was in (off-screen, harmless).
+  // Does NOT call restartRun() — the loop stays idle.
   const handleHome = useCallback(() => {
     setPhase("home")
     isPaused.value = true // ensure loop is paused while home is shown
@@ -123,12 +112,6 @@ export default function GameScreen() {
   }, [])
 
   // AppState — pause on background, auto-resume only for background-caused pauses.
-  // pausedByBackground distinguishes background-pause from manual HUD pause so
-  // a manually paused game stays paused after the player backgrounds and returns.
-  //
-  // Note: initAuth() is intentionally NOT called here. Auth is bootstrapped in
-  // App.tsx before this component ever mounts — calling it here was the source
-  // of Bug B (listener leak) and Bug C (duplicate sign-ins). See auth-fix-plan.md.
   useEffect(() => {
     let pausedByBackground = false
 
@@ -159,6 +142,7 @@ export default function GameScreen() {
         playerY={playerY}
         cameraY={cameraY}
         platforms={platforms}
+        globalTime={globalTime}
       />
 
       {/* Layer 2 — Touch input zones (always present, zero visual footprint) */}
