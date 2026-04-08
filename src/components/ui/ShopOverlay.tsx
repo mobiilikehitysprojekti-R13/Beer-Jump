@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getShopItems, ShopItem } from '../../services/firebase/shop'
 
 type Props = {
@@ -42,7 +43,10 @@ export function ShopOverlay({ visible, onClose }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🛒 Shop</Text>
+      <View style={styles.titleRow}>
+        <MaterialCommunityIcons name='storefront-outline' size={42} color='#FFA000' />
+        <Text style={styles.title}>Shop</Text>
+      </View>
 
       {loading ? (
         <Text style={styles.infoText}>Loading shop...</Text>
@@ -50,7 +54,10 @@ export function ShopOverlay({ visible, onClose }: Props) {
         <Text style={styles.errorText}>{error}</Text>
       ) : (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-          <Text style={styles.sectionTitle}>Characters</Text>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name='account-circle-outline' size={22} color='#FFFFFF' />
+            <Text style={styles.sectionTitle}>Characters</Text>
+          </View>
           {characters.length === 0 ? (
             <Text style={styles.infoText}>No characters available.</Text>
           ) : (
@@ -68,7 +75,10 @@ export function ShopOverlay({ visible, onClose }: Props) {
             ))
           )}
 
-          <Text style={styles.sectionTitle}>Themes</Text>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name='palette-outline' size={22} color='#FFFFFF' />
+            <Text style={styles.sectionTitle}>Themes</Text>
+          </View>
           {themes.length === 0 ? (
             <Text style={styles.infoText}>No themes available.</Text>
           ) : (
@@ -109,6 +119,18 @@ const styles = StyleSheet.create({
     color: '#FFA000',
     textAlign: 'center',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 6,
+  },
   scrollView: {
     width: '100%',
     maxHeight: '60%',
@@ -121,8 +143,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginTop: 12,
-    marginBottom: 6,
   },
   itemRow: {
     width: '100%',

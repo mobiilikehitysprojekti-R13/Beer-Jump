@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getTopPlayers, LeaderboardEntry } from '../../services/firebase/leaderboard'
 import { log } from '../../utils/logger'
 
@@ -29,10 +30,13 @@ export const LeaderboardOverlay = ({ visible, onClose }: Props) => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>🏆 Leaderboard</Text>
+            <View style={styles.titleRow}>
+                <MaterialCommunityIcons name='trophy-award' size={42} color='#FFA000' />
+                <Text style={styles.title}>Leaderboard</Text>
+            </View>
 
             {loading ? (
-                <Text style={styles.loading}>Loading...</Text>
+                <Text style={styles.loading}>Loading leaderboard...</Text>
             ) : (
                 <ScrollView style={styles.list}>
                     {entries.map((entry, i) => (
@@ -66,6 +70,11 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#FFA000',
         textAlign: 'center',
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     loading: {
         color: '#fff',

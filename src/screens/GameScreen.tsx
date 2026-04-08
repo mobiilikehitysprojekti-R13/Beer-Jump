@@ -13,6 +13,7 @@ import { LeaderboardOverlay } from "../components/ui/LeaderboardOverlay"
 import { SettingsOverlay } from "../components/ui/SettingsOverlay"
 import { ShopOverlay } from "../components/ui/ShopOverlay"
 import { InventoryOverlay } from "../components/ui/InventoryOverlay"
+import { PauseOverlay } from "../components/ui/PauseOverlay"
 import { isPaused } from "../state/gameValues"
 import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
@@ -75,8 +76,10 @@ export default function GameScreen() {
   // Overlay states
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsOpenedFromPause, setSettingsOpenedFromPause] = useState(false)
   const [showShop, setShowShop] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
+  const [showPauseOverlay, setShowPauseOverlay] = useState(false)
 
   useTiltInput()
 
@@ -128,13 +131,36 @@ export default function GameScreen() {
 
   const handlePause = useCallback(() => {
     isPaused.value = true
+    setShowPauseOverlay(true)
     log.info("gameLoop", "paused — HUD button")
   }, [])
 
   const handleResume = useCallback(() => {
     isPaused.value = false
+    setShowPauseOverlay(false)
     log.info("gameLoop", "resumed — HUD button")
   }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpenedFromPause(true)
+    setShowSettings(true)
+    setShowPauseOverlay(false)
+  }, [])
+
+  const handleShowSettingsFromHome = useCallback(() => {
+    setSettingsOpenedFromPause(false)
+    setShowSettings(true)
+  }, [])
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false)
+
+    if (settingsOpenedFromPause && phase === "playing") {
+      isPaused.value = false
+      log.info("gameLoop", "resumed — settings closed")
+    }
+    setSettingsOpenedFromPause(false)
+  }, [phase, settingsOpenedFromPause])
 
   // AppState — pause on background, auto-resume only for background-caused pauses.
   // pausedByBackground distinguishes background-pause from manual HUD pause so
@@ -178,7 +204,7 @@ export default function GameScreen() {
       {/* Layer 2 — Touch input zones (always present, zero visual footprint) */}
       <TouchZones />
 
-      {/* Layer 3 — HUD: score + pause button + pause overlay (playing only) */}
+      {/* Layer 3 — HUD: score + pause button */}
       {phase === "playing" && (
         <HUD
           score={score}
@@ -187,6 +213,13 @@ export default function GameScreen() {
           onResume={handleResume}
         />
       )}
+
+      {/* Pause overlay, transparent over game where relevant */}
+      <PauseOverlay
+        visible={showPauseOverlay}
+        onResume={handleResume}
+        onOpenSettings={handleOpenSettings}
+      />
 
       {/* Layer 4 — Name input overlay (first start only) */}
       {phase === "home" && !hasSetName && (
@@ -202,7 +235,7 @@ export default function GameScreen() {
       {phase === "home" && hasSetName && <HomeOverlay 
         onPlay={handlePlay}
         onShowLeaderboard={() => setShowLeaderboard(true)}
-        onShowSettings={() => setShowSettings(true)}
+        onShowSettings={handleShowSettingsFromHome}
         onShowShop={() => setShowShop(true)}
         onShowInventory={() => setShowInventory(true)}
       />}
@@ -219,7 +252,7 @@ export default function GameScreen() {
 
       {/* Layer 7 — Fullscreen overlays */}
       {showLeaderboard && <LeaderboardOverlay visible={true} onClose={() => setShowLeaderboard(false)} />}
-      {showSettings && <SettingsOverlay visible={true} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsOverlay visible={true} onClose={handleCloseSettings} />}
       {showShop && <ShopOverlay visible={true} onClose={() => setShowShop(false)} />}
       {showInventory && <InventoryOverlay visible={true} onClose={() => setShowInventory(false)} />}
     </View>

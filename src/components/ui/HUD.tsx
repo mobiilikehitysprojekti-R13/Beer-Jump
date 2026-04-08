@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { StyleSheet, TouchableOpacity, Text, View } from "react-native"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
 import {
   useAnimatedReaction,
   runOnJS,
@@ -57,20 +58,13 @@ export function HUD({ score, isPaused, onPause, onResume }: Props) {
         <Text style={styles.scoreText}>Score: {displayScore}</Text>
         {!displayPaused && (
           <TouchableOpacity onPress={onPause} style={styles.pauseButton}>
-            <Text style={styles.pauseText}>⏸</Text>
+            <MaterialCommunityIcons name='pause-circle-outline' size={30} color='#FFFFFF' />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Pause overlay — full screen, blocks all input while visible */}
-      {displayPaused && (
-        <View style={styles.pauseOverlay}>
-          <Text style={styles.pauseTitle}>Paused</Text>
-          <TouchableOpacity style={styles.resumeButton} onPress={onResume}>
-            <Text style={styles.resumeText}>▶ Resume</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+  {/* We removed the internal pause overlay.
+      Pause control is now handled by PauseOverlay with transparent background. */}
     </View>
   )
 }
@@ -95,10 +89,6 @@ const styles = StyleSheet.create({
   },
   pauseButton: {
     padding: 8,
-  },
-  pauseText: {
-    color: "#FFFFFF",
-    fontSize: 24,
   },
 
   // Pause overlay — sits above everything, semi-transparent dark fill

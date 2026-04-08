@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { View, Text, StyleSheet, TouchableOpacity, Switch } from "react-native"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { useAppStore } from "../../state/appStore"
 import { NameInputOverlay } from "./NameInputOverlay"
 
@@ -43,7 +44,10 @@ export function SettingsOverlay({ visible, onClose }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>⚙️ Settings</Text>
+      <View style={styles.titleRow}>
+        <MaterialCommunityIcons name='cog-outline' size={42} color='#FFA000' />
+        <Text style={styles.title}>Settings</Text>
+      </View>
 
       {/* Change Name */}
       <TouchableOpacity style={styles.button} onPress={() => setShowNameInput(true)}>
@@ -106,6 +110,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFA000',
     textAlign: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   button: {
     backgroundColor: '#FFA000',
