@@ -51,7 +51,9 @@ export function GameOverOverlay({
   // render, and the empty dep array guarantees it fires exactly once per
   // GameOverOverlay mount, not on subsequent re-renders.
   useEffect(() => {
-    onGameOver(score)
+    onGameOver(score).catch((error) => {
+      console.warn("GameOver score submit failed:", error)
+    })
   }, [])
 
   return (

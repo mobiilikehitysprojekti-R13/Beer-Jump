@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 import AsyncStorage from "@react-native-async-storage/async-storage"
+import { Platform } from "react-native"
 import { GamePhase } from "./types"
 import { touchControlsEnabled } from "./gameValues"
 import { GYRO_SENSITIVITY } from "../constants/gameConfig"
@@ -62,15 +63,13 @@ export const useAppStore = create<AppStore>()(
             console.log("appStore", "new personal best", { old: s.personalBest, new: score })
             // Submit to Firestore in the background
             import("../services/firebase/leaderboard").then(({ submitScore }) => {
-              import("react-native").then(({ Platform }) => {
-                submitScore(score, {
-                  level: s.playerLevel,
-                  xp: s.xp,
-                  coins: s.coins,
-                  platform: Platform.OS as 'ios' | 'android',
-                }).catch((error) => {
-                  console.warn("Failed to submit score to Firestore:", error)
-                })
+              submitScore(score, {
+                level: s.playerLevel,
+                xp: s.xp,
+                coins: s.coins,
+                platform: Platform.OS as 'ios' | 'android',
+              }).catch((error) => {
+                console.warn("Failed to submit score to Firestore:", error)
               })
             })
             return { personalBest: score }
