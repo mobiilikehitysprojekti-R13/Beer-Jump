@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getTopPlayers, LeaderboardEntry } from '../../services/firebase/leaderboard'
 import { log } from '../../utils/logger'
 
@@ -28,77 +29,86 @@ export const LeaderboardOverlay = ({ visible, onClose }: Props) => {
     if (!visible) return null
 
     return (
-        <View style={styles.overlay}>
-            <View style={styles.container}>
-                <Text style={styles.title}>🏆 Leaderboard</Text>
-
-                {loading ? (
-                    <Text style={styles.loading}>Loading...</Text>
-                ) : (
-                    <ScrollView style={styles.list}>
-                        {entries.map((entry, i) => (
-                            <View key={entry.id} style={styles.row}>
-                                <Text style={styles.rank}>{i + 1}.</Text>
-                                <Text style={styles.name}>{entry.playerName}</Text>
-                                <Text style={styles.score}>{entry.score}</Text>
-                            </View>
-                        ))}
-                    </ScrollView>
-                )}
-
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                    <Text style={styles.closeText}>Close</Text>
-                </TouchableOpacity>
+        <View style={styles.container}>
+            <View style={styles.titleRow}>
+                <MaterialCommunityIcons name='trophy-award' size={42} color='#FFA000' />
+                <Text style={styles.title}>Leaderboard</Text>
             </View>
+
+            {loading ? (
+                <Text style={styles.loading}>Loading leaderboard...</Text>
+            ) : (
+                <ScrollView style={styles.list}>
+                    {entries.map((entry, i) => (
+                        <View key={entry.id} style={styles.row}>
+                            <Text style={styles.rank}>{i + 1}.</Text>
+                            <Text style={styles.name}>{entry.playerName}</Text>
+                            <Text style={styles.score}>{entry.score}</Text>
+                        </View>
+                    ))}
+                </ScrollView>
+            )}
+
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Text style={styles.closeText}>Close</Text>
+            </TouchableOpacity>
         </View>
     )
 }
 
 const styles = StyleSheet.create({
-    overlay: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     container: {
-        width: '80%',
-        backgroundColor: '#222',
-        borderRadius: 16,
-        padding: 16,
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "#1a1a2e",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 24,
+        padding: 20,
     },
     title: {
-        fontSize: 22,
+        fontSize: 48,
         fontWeight: 'bold',
-        color: '#FFD700',
+        color: '#FFA000',
         textAlign: 'center',
-        marginBottom: 12,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     loading: {
         color: '#fff',
         textAlign: 'center',
         paddingVertical: 20,
+        fontSize: 18,
     },
     list: {
-        maxHeight: 300,
-        marginBottom: 12,
+        maxHeight: 400,
+        width: '100%',
+        maxWidth: 400,
     },
     row: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingVertical: 4,
+        paddingVertical: 8,
         borderBottomColor: '#444',
         borderBottomWidth: 1,
     },
-    rank: { color: '#FFD700', width: 24 },
-    name: { color: '#fff', flex: 1 },
-    score: { color: '#00FF00', width: 60, textAlign: 'right' },
+    rank: { color: '#FFD700', width: 40, fontSize: 18 },
+    name: { color: '#fff', flex: 1, fontSize: 18 },
+    score: { color: '#00FF00', width: 80, textAlign: 'right', fontSize: 18 },
     closeButton: {
-        backgroundColor: '#555',
-        paddingVertical: 8,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderColor: '#FFA000',
+        paddingVertical: 10,
+        paddingHorizontal: 32,
         borderRadius: 8,
-        alignItems: 'center',
+        marginTop: 12,
     },
-    closeText: { color: '#fff', fontWeight: 'bold' },
+    closeText: { 
+        color: '#FFA000', 
+        fontWeight: 'bold',
+        fontSize: 18,
+    },
 })

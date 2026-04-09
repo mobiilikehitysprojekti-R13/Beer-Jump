@@ -8,6 +8,12 @@ import { HUD } from "../components/ui/HUD"
 import { TouchZones } from "../components/ui/TouchZones"
 import { HomeOverlay } from "../components/ui/HomeOverlay"
 import { GameOverOverlay } from "../components/ui/GameOverOverlay"
+import { NameInputOverlay } from "../components/ui/NameInputOverlay"
+import { LeaderboardOverlay } from "../components/ui/LeaderboardOverlay"
+import { SettingsOverlay } from "../components/ui/SettingsOverlay"
+import { ShopOverlay } from "../components/ui/ShopOverlay"
+import { InventoryOverlay } from "../components/ui/InventoryOverlay"
+import { PauseOverlay } from "../components/ui/PauseOverlay"
 import { isPaused } from "../state/gameValues"
 import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
@@ -25,6 +31,8 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
   s.personalBest
 const selectSensitivity = (s: ReturnType<typeof useAppStore.getState>) =>
   s.gyroSensitivity
+const selectHasSetName = (s: ReturnType<typeof useAppStore.getState>) =>
+  s.hasSetName
 
 // ---------------------------------------------------------------------------
 // GameScreen
@@ -58,9 +66,18 @@ export default function GameScreen() {
   const setPersonalBest = useAppStore(selectSetPersonalBest)
   const personalBest = useAppStore(selectPersonalBest)
   const sensitivity = useAppStore(selectSensitivity)
+  const hasSetName = useAppStore(selectHasSetName)
 
   const [phase, setPhase] = useState<GamePhase>("home")
   const [finalScore, setFinalScore] = useState(0)
+
+  // Overlay states
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [settingsOpenedFromPause, setSettingsOpenedFromPause] = useState(false)
+  const [showShop, setShowShop] = useState(false)
+  const [showInventory, setShowInventory] = useState(false)
+  const [showPauseOverlay, setShowPauseOverlay] = useState(false)
 
   useTiltInput()
 
@@ -68,8 +85,8 @@ export default function GameScreen() {
   // Wrapped in useCallback: captured in the worklet closure via runOnJS.
   // Stable dep: setPersonalBest is a Zustand action (stable reference).
   const onGameOver = useCallback(
-    (score: number) => {
-      setPersonalBest(score)
+    async (score: number) => {
+      await setPersonalBest(score)
       setFinalScore(score)
       setPhase("gameover")
       log.info("gameLoop", "onGameOver", { score })
@@ -103,13 +120,36 @@ export default function GameScreen() {
 
   const handlePause = useCallback(() => {
     isPaused.value = true
+    setShowPauseOverlay(true)
     log.info("gameLoop", "paused — HUD button")
   }, [])
 
   const handleResume = useCallback(() => {
     isPaused.value = false
+    setShowPauseOverlay(false)
     log.info("gameLoop", "resumed — HUD button")
   }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpenedFromPause(true)
+    setShowSettings(true)
+    setShowPauseOverlay(false)
+  }, [])
+
+  const handleShowSettingsFromHome = useCallback(() => {
+    setSettingsOpenedFromPause(false)
+    setShowSettings(true)
+  }, [])
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false)
+
+    if (settingsOpenedFromPause && phase === "playing") {
+      isPaused.value = false
+      log.info("gameLoop", "resumed — settings closed")
+    }
+    setSettingsOpenedFromPause(false)
+  }, [phase, settingsOpenedFromPause])
 
   // AppState — pause on background, auto-resume only for background-caused pauses.
   useEffect(() => {
@@ -148,7 +188,7 @@ export default function GameScreen() {
       {/* Layer 2 — Touch input zones (always present, zero visual footprint) */}
       <TouchZones />
 
-      {/* Layer 3 — HUD: score + pause button + pause overlay (playing only) */}
+      {/* Layer 3 — HUD: score + pause button */}
       {phase === "playing" && (
         <HUD
           score={score}
@@ -158,10 +198,33 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Layer 4 — Home overlay */}
-      {phase === "home" && <HomeOverlay onPlay={handlePlay} />}
+      {/* Pause overlay, transparent over game where relevant */}
+      <PauseOverlay
+        visible={showPauseOverlay}
+        onResume={handleResume}
+        onOpenSettings={handleOpenSettings}
+      />
 
-      {/* Layer 5 — Game over overlay */}
+      {/* Layer 4 — Name input overlay (first start only) */}
+      {phase === "home" && !hasSetName && (
+        <NameInputOverlay
+          onNameSubmit={(name) => {
+            useAppStore.getState().setPlayerName(name)
+            useAppStore.getState().setHasSetName(true)
+          }}
+        />
+      )}
+
+      {/* Layer 5 — Home overlay */}
+      {phase === "home" && hasSetName && <HomeOverlay 
+        onPlay={handlePlay}
+        onShowLeaderboard={() => setShowLeaderboard(true)}
+        onShowSettings={handleShowSettingsFromHome}
+        onShowShop={() => setShowShop(true)}
+        onShowInventory={() => setShowInventory(true)}
+      />}
+
+      {/* Layer 6 — Game over overlay */}
       {phase === "gameover" && (
         <GameOverOverlay
           score={finalScore}
@@ -170,6 +233,12 @@ export default function GameScreen() {
           onHome={handleHome}
         />
       )}
+
+      {/* Layer 7 — Fullscreen overlays */}
+      {showLeaderboard && <LeaderboardOverlay visible={true} onClose={() => setShowLeaderboard(false)} />}
+      {showSettings && <SettingsOverlay visible={true} onClose={handleCloseSettings} />}
+      {showShop && <ShopOverlay visible={true} onClose={() => setShowShop(false)} />}
+      {showInventory && <InventoryOverlay visible={true} onClose={() => setShowInventory(false)} />}
     </View>
   )
 }

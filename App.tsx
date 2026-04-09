@@ -6,6 +6,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 import GameScreen from "./src/screens/GameScreen"
 import { auth } from "./src/services/firebase/config"
 import { initAuth } from "./src/services/firebase/auth"
+import { ensureDefaultInventoryForPlayer } from "./src/services/firebase/inventory"
+import { useAppStore } from "./src/state/appStore"
 import { log } from "./src/utils/logger"
 
 // ---------------------------------------------------------------------------
@@ -70,6 +72,14 @@ export default function App() {
 
         // Step 2: sign in anonymously if no session, write UID to Zustand.
         await initAuth()
+
+        log.info("app", "auth bootstrap: loading best score from Firestore")
+
+        // Step 3: load best score from Firestore
+        await useAppStore.getState().loadBestScoreFromFirestore()
+
+        log.info("app", "auth bootstrap: ensuring default inventory items")
+        await ensureDefaultInventoryForPlayer()
 
         log.info("app", "auth bootstrap: complete, rendering navigator")
 

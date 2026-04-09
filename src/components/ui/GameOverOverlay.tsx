@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
+import { Platform } from "react-native"
 import { submitScore } from '../../services/firebase/leaderboard'
 
 // GameOverOverlay
@@ -29,7 +30,7 @@ const onGameOver = async (score: number) => {
     level: 3,
     xp: 120,
     coins: 50,
-    platform: 'ios',
+    platform: Platform.OS as 'ios' | 'android',
   })
 }
 
@@ -50,7 +51,9 @@ export function GameOverOverlay({
   // render, and the empty dep array guarantees it fires exactly once per
   // GameOverOverlay mount, not on subsequent re-renders.
   useEffect(() => {
-    onGameOver(score)
+    onGameOver(score).catch((error) => {
+      console.warn("GameOver score submit failed:", error)
+    })
   }, [])
 
   return (

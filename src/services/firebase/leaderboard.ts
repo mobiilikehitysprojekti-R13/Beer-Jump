@@ -1,4 +1,4 @@
-import { Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { Timestamp, collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore'
 import { getUser } from './auth'
 import { getDocument, setDocument, updateDocument } from './firestore'
 import { db } from './config'
@@ -27,9 +27,6 @@ export const submitScore = async (
   score: number,
   extra: { level: number; xp: number; coins: number; platform: 'ios' | 'android' }
 ) => {
-  // Auth is guaranteed settled by App.tsx bootstrap before GameScreen mounts.
-  // If getUser() somehow returns null here it means the bootstrap sequence
-  // was bypassed — log and bail rather than attempting a broken sign-in.
   const user = getUser()
   if (!user) {
     log.error("firebase", "submitScore: getUser() returned null — auth bootstrap may not have completed", { score })
@@ -38,38 +35,65 @@ export const submitScore = async (
 
   log.info("firebase", "submitScore called", { uid: user.uid, score })
 
-  const existing = await getDocument(COLLECTION, user.uid)
-  const data = {
-    playerName: 'Player', // you can replace this with a customizable name
-    score,
-    timestamp: Timestamp.now(),
-    ...extra,
-  }
+  try {
+    const existing = await getDocument(COLLECTION, user.uid)
+    // Get playerName from store
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useAppStore } = require("../../state/appStore")
+    const playerName = useAppStore.getState().playerName
+    const data = {
+      playerName,
+      score,
+      timestamp: Timestamp.now(),
+      ...extra,
+    }
 
-  if (!existing) {
-    log.info("firebase", "creating new leaderboard entry", { uid: user.uid, score })
-    return setDocument(COLLECTION, user.uid, data)
-  }
+    if (!existing) {
+      log.info("firebase", "creating new leaderboard entry", { uid: user.uid, score })
+      return await setDocument(COLLECTION, user.uid, data)
+    }
 
-  if (score > existing.score) {
-    log.info("firebase", "new high score", { oldScore: existing.score, newScore: score })
-    return updateDocument(COLLECTION, user.uid, data)
-  }
+    if (score > existing.score) {
+      log.info("firebase", "new high score", { oldScore: existing.score, newScore: score })
+      return await updateDocument(COLLECTION, user.uid, data)
+    }
 
-  log.info("firebase", "score not higher, skipping update", { score, best: existing.score })
+    log.info("firebase", "score not higher, skipping update", { score, best: existing.score })
+  } catch (err) {
+    // Network error or offline - log but don't crash
+    log.warn("firebase", "submitScore: network error or offline", { error: String(err) })
+  }
 }
 
 // -------------------------
-// Get the current player's leaderboard data
+// Get the current player's best score
 // -------------------------
-export const getPlayerData = async (): Promise<LeaderboardEntry | null> => {
+export const getPlayerBestScore = async (): Promise<number> => {
   const user = getUser()
-  if (!user) return null
+  if (!user) {
+    log.warn("firebase", "getPlayerBestScore: no signed-in user")
+    return 0
+  }
 
-  const docData = await getDocument(COLLECTION, user.uid)
-  if (!docData) return null
+  log.info("firebase", "getPlayerBestScore: start", { uid: user.uid })
 
-  return { id: user.uid, ...(docData as Omit<LeaderboardEntry, 'id'>) }
+  try {
+    const docRef = doc(db, COLLECTION, user.uid)
+    const docSnap = await getDoc(docRef)
+
+    if (docSnap.exists()) {
+      const data = docSnap.data() as LeaderboardEntry
+      log.info("firebase", "getPlayerBestScore: user has score", { score: data.score })
+      return data.score || 0
+    }
+
+    log.info("firebase", "getPlayerBestScore: no score document for user", { uid: user.uid })
+  } catch (error) {
+    // Network error or offline - log but don't crash
+    log.warn("firebase", "getPlayerBestScore: network error or offline", { error: String(error) })
+  }
+
+  return 0
 }
 
 // -------------------------
@@ -89,7 +113,8 @@ export const getTopPlayers = async (top = 10): Promise<LeaderboardEntry[]> => {
     log.info("firebase", "getTopPlayers fetched", { count: entries.length })
     return entries
   } catch (err) {
-    log.error("firebase", "getTopPlayers failed", { error: String(err) })
+    // Network error or offline - log but return empty gracefully
+    log.warn("firebase", "getTopPlayers: network error or offline", { error: String(err) })
     return []
   }
 }
