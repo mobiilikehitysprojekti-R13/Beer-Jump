@@ -1,4 +1,4 @@
-import { Platform, PlatformType } from "../state/types"
+import { Enemy, Platform, PlatformType, DifficultyConfig } from "../state/types"
 import {
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
@@ -8,7 +8,11 @@ import {
   PLATFORMS_PER_ROW,
   SCREEN_WIDTH,
   SCREEN_HEIGHT,
+  MAX_ENEMIES,
+  ENEMY_BASE_SPEED,
+  ENEMY_HEIGHT,
 } from "../constants/gameConfig"
+import { getDifficultyConfig } from "./DifficultyScaler"
 
 // ---------------------------------------------------------------------------
 // Column layout
@@ -40,17 +44,19 @@ function lcgNext(s: number): [number, number] {
 
 // ---------------------------------------------------------------------------
 // nextStartColumn
-// Picks a random starting column for a row such that all PLATFORMS_PER_ROW
-// consecutive columns fit without wrapping, and the first column differs from
-// prevCol. Returns the start column for the row.
+// Picks a random starting column for a row such that all `step` consecutive
+// columns fit without wrapping, and the first column differs from prevCol.
 //
-// Max valid start = PLATFORM_COLUMNS - PLATFORMS_PER_ROW
-// Example with 6 columns and PLATFORMS_PER_ROW=2: start can be 0..4.
-// Example with 6 columns and PLATFORMS_PER_ROW=1: start can be 0..5.
+// step — number of platforms in this row (from config.platformsPerRow).
+// Max valid start = PLATFORM_COLUMNS - step
 // ---------------------------------------------------------------------------
-function nextStartColumn(s: number, prevCol: number): [number, number, number] {
+function nextStartColumn(
+  s: number,
+  prevCol: number,
+  step: number,
+): [number, number, number] {
   "worklet"
-  const maxStart = PLATFORM_COLUMNS - PLATFORMS_PER_ROW
+  const maxStart = PLATFORM_COLUMNS - step
   let rand: number
   ;[s, rand] = lcgNext(s)
   let col = Math.floor(rand * (maxStart + 1))
@@ -62,36 +68,38 @@ function nextStartColumn(s: number, prevCol: number): [number, number, number] {
 
 // ---------------------------------------------------------------------------
 // pickType
-// Selects a platform type from the regular-row probability table using one
-// LCG step. Returns [nextSeed, type].
+// Selects a platform type from a probability table using one LCG step.
+// Returns [nextSeed, type].
 //
-// Type mix (placeholder — DifficultyScaler will override this in Phase 2):
-//   55% static
-//   20% moving
-//   10% breakable
-//   10% disappearing
-//    5% fake
+// probs — cumulative upper bounds from DifficultyConfig.typeProbabilities.
+//   rand < probs.static       → 'static'
+//   rand < probs.static+moving → 'moving'   (stored as probs.moving cumulative)
+//   etc.
+// The table is built cumulatively in getDifficultyConfig so this function
+// just walks the bounds in order — no addition needed here.
 //
-// Floor row platforms always use "static" — BeerGuy spawns above the floor
-// and the first collision must always succeed.
+// Floor row platforms always use 'static' — the caller passes Tier 1 probs
+// or handles floor rows before calling pickType at all.
 // ---------------------------------------------------------------------------
-function pickType(s: number): [number, PlatformType] {
+function pickType(
+  s: number,
+  probs: DifficultyConfig["typeProbabilities"],
+): [number, PlatformType] {
   "worklet"
   let rand: number
   ;[s, rand] = lcgNext(s)
-  let type: PlatformType
-  if (rand < 0.55) {
-    type = 'static'
-  } else if (rand < 0.75) {
-    type = 'moving'
-  } else if (rand < 0.85) {
-    type = 'breakable'
-  } else if (rand < 0.95) {
-    type = 'disappearing'
-  } else {
-    type = 'fake'
-  }
-  return [s, type]
+
+  // Cumulative probability walk — probs values are raw per-type weights.
+  // We accumulate inline to avoid storing a separate cumulative array.
+  let cum = probs.static
+  if (rand < cum) return [s, "static"]
+  cum += probs.moving
+  if (rand < cum) return [s, "moving"]
+  cum += probs.breakable
+  if (rand < cum) return [s, "breakable"]
+  cum += probs.disappearing
+  if (rand < cum) return [s, "disappearing"]
+  return [s, "fake"]
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +113,12 @@ function pickType(s: number): [number, PlatformType] {
 // moveSpeed is hardcoded here as a starting tuning value — DifficultyScaler
 // will pass a range in Phase 2.
 // ---------------------------------------------------------------------------
-function setPlatform(p: Platform, x: number, y: number, type: PlatformType ): void {
+function setPlatform(
+  p: Platform,
+  x: number,
+  y: number,
+  type: PlatformType,
+): void {
   "worklet"
   const cw = colWidth()
 
@@ -125,7 +138,7 @@ function setPlatform(p: Platform, x: number, y: number, type: PlatformType ): vo
   p.visibleTimer = 0
 
   // Type-specific overrides
-  if (type === 'moving') {
+  if (type === "moving") {
     // Patrol one column left and one column right of spawn position,
     // clamped so the platform never leaves the screen.
     const patrolLeft = x - cw
@@ -187,7 +200,7 @@ export function createPlatformPool(): Platform[] {
 //
 // Pool constraint check (not enforced at runtime, verify when tuning):
 //   (PLATFORM_POOL_SIZE - FLOOR_PLATFORMS) must be divisible by PLATFORMS_PER_ROW
-//   Current: (120 - 6) = 114, 114 / 2 = 57 rows ✓
+//   Current: (60 - 6) = 54, 54 / 1 = 54 rows ✓
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // safeRowTypes
@@ -206,16 +219,94 @@ export function createPlatformPool(): Platform[] {
 // types[] is mutated in place — avoids allocation inside a worklet.
 // ---------------------------------------------------------------------------
 function safeRowTypes(types: PlatformType[]): void {
-  'worklet'
+  "worklet"
   let allFake = true
   for (let i = 0; i < types.length; i++) {
-    if (types[i] !== 'fake') {
+    if (types[i] !== "fake") {
       allFake = false
       break
     }
   }
   if (allFake) {
-    types[0] = 'static'
+    types[0] = "static"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// enforceMovingRowRule
+// If any slot in the row is 'moving', forces all other slots to 'moving'.
+// Applies regardless of row width — a single moving platform is still an
+// all-moving row, which matters for enemy spawn exclusion.
+//
+// Called after safeRowTypes so both invariants are enforced in sequence.
+// types[] is mutated in place — no allocation.
+// ---------------------------------------------------------------------------
+function enforceMovingRowRule(types: PlatformType[], count: number): void {
+  "worklet"
+  let hasMoving = false
+  for (let i = 0; i < count; i++) {
+    if (types[i] === "moving") {
+      hasMoving = true
+      break
+    }
+  }
+  if (hasMoving) {
+    for (let i = 0; i < count; i++) {
+      types[i] = "moving"
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// setMovingPlatformGroup
+// Writes a coordinated patrol for a group of moving platforms that share a row.
+// All platforms in the group get the same patrol boundaries, moveSpeed, and
+// moveDirection so they move as one wide surface without ever intersecting.
+//
+// Group patrol logic:
+//   groupLeft  = left edge of the leftmost platform's per-column patrol bound
+//   groupRight = right edge of the rightmost platform's per-column patrol bound
+//   Both are clamped to [0, SCREEN_WIDTH].
+//   Every platform in the group shares these bounds — they all reverse at the
+//   same wall simultaneously.
+//
+// Called in place of individual setPlatform calls when the row is all-moving.
+// ---------------------------------------------------------------------------
+function setMovingPlatformGroup(
+  pool: Platform[],
+  poolOffset: number,
+  startX: number,
+  y: number,
+  count: number,
+): void {
+  "worklet"
+  const cw = colWidth()
+
+  // Group patrol: one column left of leftmost, one column right of rightmost
+  const groupLeft = startX - cw < 0 ? 0 : startX - cw
+  const groupRight =
+    startX + count * cw + cw > SCREEN_WIDTH
+      ? SCREEN_WIDTH
+      : startX + count * cw + cw
+
+  for (let offset = 0; offset < count; offset++) {
+    const p = pool[poolOffset + offset]
+    const x = startX + offset * cw
+
+    // Base reset (same as setPlatform)
+    p.x = x
+    p.y = y
+    p.type = "moving"
+    p.active = true
+    p.moveSpeed = 0.12
+    p.moveDirection = 1
+    p.moveBoundaryLeft = groupLeft
+    p.moveBoundaryRight = groupRight
+    p.crumbling = false
+    p.crumbleTimer = 0
+    p.opacity = 1
+    p.visible = true
+    p.visibleTimer = 0
   }
 }
 
@@ -229,41 +320,83 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
 
   // Floor row — always static (BeerGuy must land here reliably on spawn)
   for (let col = 0; col < FLOOR_PLATFORMS; col++) {
-    setPlatform(pool[col], col * cw, floorY, 'static')
+    setPlatform(pool[col], col * cw, floorY, "static")
   }
 
   // Regular rows — type chosen per-platform by pickType(), then validated
   // by safeRowTypes to prevent all-fake rows.
+  // resetPlatforms always uses Tier 1 settings — the player always
+  // starts fresh regardless of previous run history.
   let currentY = floorY
   let prevStartCol = 0
 
-  // Reusable type buffer — fixed length, no dynamic allocation.
-  // Array literal is safe here; this is run-start init, not per-frame.
-  const rowTypes: PlatformType[] = ['static', 'static']
+  // Tier 1 settings: 3 platforms per row (wide grouped surface), generous type mix
+  const tier1PlatformsPerRow = 3
+  const tier1Probs = {
+    static: 0.75,
+    moving: 0.12,
+    breakable: 0.06,
+    disappearing: 0.05,
+    fake: 0.02,
+  }
+
+  // Reusable type buffer — sized to max group size (PLATFORMS_PER_ROW = 3).
+  const rowTypes: PlatformType[] = Array.from(
+    { length: PLATFORMS_PER_ROW },
+    () => "static" as PlatformType,
+  )
 
   let poolIndex = FLOOR_PLATFORMS
   while (poolIndex + PLATFORMS_PER_ROW <= PLATFORM_POOL_SIZE) {
     let startCol: number
-    ;[s, rand, startCol] = nextStartColumn(s, prevStartCol)
+    ;[s, rand, startCol] = nextStartColumn(
+      s,
+      prevStartCol,
+      tier1PlatformsPerRow,
+    )
     currentY -= PLATFORM_ROW_HEIGHT
 
-    // Pick types for all slots in this row
-    for (let offset = 0; offset < PLATFORMS_PER_ROW; offset++) {
+    // Pick types for Tier 1 group width
+    for (let offset = 0; offset < tier1PlatformsPerRow; offset++) {
       let type: PlatformType
-      ;[s, type] = pickType(s)
+      ;[s, type] = pickType(s, tier1Probs)
       rowTypes[offset] = type
     }
 
     // Guarantee at least one landable platform per row
     safeRowTypes(rowTypes)
+    // If any slot is moving, make all slots moving (prevents type conflicts)
+    enforceMovingRowRule(rowTypes, tier1PlatformsPerRow)
 
-    for (let offset = 0; offset < PLATFORMS_PER_ROW; offset++) {
-      setPlatform(
-        pool[poolIndex + offset],
-        columnX(startCol + offset),
+    // Fill active platforms for this row's group
+    // All-moving rows use coordinated group patrol; mixed rows use individual setPlatform
+    let rowIsAllMoving = rowTypes[0] === "moving"
+    if (rowIsAllMoving) {
+      setMovingPlatformGroup(
+        pool,
+        poolIndex,
+        columnX(startCol),
         currentY,
-        rowTypes[offset],
+        tier1PlatformsPerRow,
       )
+    } else {
+      for (let offset = 0; offset < tier1PlatformsPerRow; offset++) {
+        setPlatform(
+          pool[poolIndex + offset],
+          columnX(startCol + offset),
+          currentY,
+          rowTypes[offset],
+        )
+      }
+    }
+    // Deactivate trailing slots in the stride beyond tier1PlatformsPerRow
+    for (
+      let offset = tier1PlatformsPerRow;
+      offset < PLATFORMS_PER_ROW;
+      offset++
+    ) {
+      pool[poolIndex + offset].active = false
+      pool[poolIndex + offset].y = -9999
     }
 
     poolIndex += PLATFORMS_PER_ROW
@@ -277,28 +410,33 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
 //
 // Finds platforms that have scrolled 1.5 screen heights below the camera
 // bottom and repositions them above the current highest active platform,
-// one PLATFORM_ROW_HEIGHT higher. Platforms are recycled in groups of
-// PLATFORMS_PER_ROW to maintain the paired layout.
+// one PLATFORM_ROW_HEIGHT higher.
 //
-// setPlatform fully resets all fields including crumbling/crumbleTimer, so
-// a deactivated breakable platform that gets recycled starts completely clean
-// regardless of what type it is assigned.
+// DifficultyScaler integration:
+//   getDifficultyConfig(rngState[2]) is called once per recycled row.
+//   rngState[2] (rowsGenerated) is incremented after each row is placed.
+//   pickType receives the config's typeProbabilities for the current tier.
+//   Enemy spawn uses config.enemiesEnabled and config.enemySpeedMultiplier.
 //
-// The offscreen check uses p.y regardless of p.active — deactivated breakable
-// platforms (active = false) still have a valid world-Y and will be recycled
-// normally when they scroll off camera.
-//
-// colWidth() is hoisted above the recycle loop — it is a constant for the
-// lifetime of a run (screen dimensions don't change) but calling it inside
-// the inner loop per recycled platform was a repeated division that adds up
-// across many recycle events.
+// Enemy spawn:
+//   One enemy may spawn per row when enemiesEnabled is true.
+//   Spawn probability scales with tier (15% at Tier 2 -> 35% at Tier 5).
+//   Enemies are never placed on fake or disappearing platforms.
+//   An inactive slot from the enemy pool is claimed; if none available, skip.
 //
 // RNG state (rngState[]):
-//   [0] — LCG seed (persisted across frames)
-//   [1] — start column of the most recently placed row
+//   [0] - LCG seed (persisted across frames)
+//   [1] - start column of the most recently placed row
+//   [2] - rows generated this run (tier input for DifficultyScaler)
 // ---------------------------------------------------------------------------
+
+// Enemy spawn probability per tier index (0-based: tier1=index0, etc.)
+// Index 0 (Tier 1) is always 0 -- enemiesEnabled is false for Tier 1.
+const ENEMY_SPAWN_PROB = [0, 0.15, 0.22, 0.28, 0.35]
+
 export function recyclePlatforms(
   platforms: Platform[],
+  enemyPool: Enemy[],
   cameraY: number,
   rngState: number[],
 ): void {
@@ -317,41 +455,143 @@ export function recyclePlatforms(
 
   let s = rngState[0]
   let prevStartCol = rngState[1] !== undefined ? rngState[1] : 0
+  let rowsGenerated = rngState[2] !== undefined ? rngState[2] : 0
   let rand: number
 
-  // Hoisted — constant for the run, avoids repeated division per recycle event
+  // Hoisted — constant for the run
   const cw = colWidth()
 
-  const step = PLATFORMS_PER_ROW
+  // Pool stride is always PLATFORMS_PER_ROW (3 = max group size).
+  // config.platformsPerRow tells us how many slots to actually fill per stride.
+  // Trailing slots in the stride are deactivated.
+  const stride = PLATFORMS_PER_ROW
 
-  // Reusable type buffer — fixed length, no dynamic allocation.
-  const rowTypes: PlatformType[] = ['static', 'static']
+  // Reusable type buffer — sized to max stride (PLATFORMS_PER_ROW = 3).
+  const rowTypes: PlatformType[] = Array.from(
+    { length: stride },
+    () => "static" as PlatformType,
+  )
 
-  for (let i = 0; i + step <= platforms.length; i += step) {
+  for (let i = 0; i + stride <= platforms.length; i += stride) {
     // Use world-Y of the first slot in the group regardless of active state
     if (platforms[i].y > offscreenThreshold) {
+      // Resolve difficulty config for this row
+      const config = getDifficultyConfig(rowsGenerated)
+      const step = config.platformsPerRow // runtime group width (1, 2, or 3)
+
       let startCol: number
-      ;[s, rand, startCol] = nextStartColumn(s, prevStartCol)
+      ;[s, rand, startCol] = nextStartColumn(s, prevStartCol, step)
 
       const newY = minY - PLATFORM_ROW_HEIGHT
 
-      // Pick types, then guarantee at least one landable platform
-      for (let offset = 0; offset < step; offset++) {
-        let type: PlatformType
-        ;[s, type] = pickType(s)
-        rowTypes[offset] = type
-      }
-      safeRowTypes(rowTypes)
+      // --- Decide: flying enemy row OR platform row ---
+      //
+      // Enemy rows and platform rows are mutually exclusive. If a flying enemy
+      // spawns on this row, all platform slots in the stride are deactivated.
+      // The enemy floats at the row's Y position with no platform beneath it.
+      //
+      // Roll for enemy spawn first so the platform path is skipped entirely
+      // when an enemy takes the row. This also means the LCG stays in sync
+      // regardless of which branch runs (one lcgNext call either way).
+      let enemySpawnedThisRow = false
 
-      for (let offset = 0; offset < step; offset++) {
-        setPlatform(platforms[i + offset], (startCol + offset) * cw, newY, rowTypes[offset] )
+      if (config.enemiesEnabled) {
+        const spawnProb = ENEMY_SPAWN_PROB[config.tier - 1] ?? 0
+        let spawnRand: number
+        ;[s, spawnRand] = lcgNext(s)
+
+        if (spawnRand < spawnProb) {
+          // Find an inactive enemy pool slot
+          for (let e = 0; e < MAX_ENEMIES; e++) {
+            if (!enemyPool[e].active) {
+              const enemy = enemyPool[e]
+
+              // Enemy width = 2 column widths — spans two platform widths
+              const enemyWidth = cw * 2
+
+              // Spawn column: pick a column such that the 2-wide enemy fits.
+              // Reuse the LCG for the column choice.
+              let spawnCol: number
+              ;[s, , spawnCol] = nextStartColumn(s, prevStartCol, 2)
+
+              const enemyX = spawnCol * cw
+
+              // Patrol: one column left of leftmost edge, one column right of rightmost edge
+              const patrolLeft = enemyX - cw < 0 ? 0 : enemyX - cw
+              const patrolRight =
+                enemyX + enemyWidth + cw > SCREEN_WIDTH
+                  ? SCREEN_WIDTH
+                  : enemyX + enemyWidth + cw
+
+              enemy.x = enemyX
+              enemy.y = newY // floats at row Y — no platform beneath
+              enemy.width = enemyWidth
+              enemy.height = ENEMY_HEIGHT
+              enemy.patrolLeft = patrolLeft
+              enemy.patrolRight = patrolRight
+              enemy.velocityX = ENEMY_BASE_SPEED * config.enemySpeedMultiplier
+              enemy.alive = true
+              enemy.active = true
+
+              enemySpawnedThisRow = true
+              break
+            }
+          }
+        }
+      }
+
+      if (enemySpawnedThisRow) {
+        // Deactivate all platform slots in this stride — the flying enemy owns the row
+        for (let offset = 0; offset < stride; offset++) {
+          platforms[i + offset].active = false
+          platforms[i + offset].y = -9999
+        }
+      } else {
+        // No enemy — place platforms normally
+        // Pick types for the active group width
+        for (let offset = 0; offset < step; offset++) {
+          let type: PlatformType
+          ;[s, type] = pickType(s, config.typeProbabilities)
+          rowTypes[offset] = type
+        }
+        safeRowTypes(rowTypes)
+        enforceMovingRowRule(rowTypes, step)
+
+        const rowIsAllMoving = rowTypes[0] === "moving"
+        if (rowIsAllMoving) {
+          setMovingPlatformGroup(platforms, i, startCol * cw, newY, step)
+        } else {
+          for (let offset = 0; offset < step; offset++) {
+            setPlatform(
+              platforms[i + offset],
+              (startCol + offset) * cw,
+              newY,
+              rowTypes[offset],
+            )
+          }
+        }
+        // Deactivate trailing slots in the stride (when step < stride)
+        for (let offset = step; offset < stride; offset++) {
+          platforms[i + offset].active = false
+          platforms[i + offset].y = -9999
+        }
+      }
+
+      // Deactivate enemies that have scrolled off screen
+      for (let e = 0; e < MAX_ENEMIES; e++) {
+        if (enemyPool[e].active && enemyPool[e].y > offscreenThreshold) {
+          enemyPool[e].active = false
+          enemyPool[e].alive = false
+        }
       }
 
       minY = newY
       prevStartCol = startCol
+      rowsGenerated += 1
     }
   }
 
   rngState[0] = s
   rngState[1] = prevStartCol
+  rngState[2] = rowsGenerated
 }
