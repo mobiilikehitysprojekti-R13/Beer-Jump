@@ -61,10 +61,14 @@ export const MAX_FALL_SPEED = 1.0 // units/ms   PLAYTEST: slow drift down = floa
 //
 // NORMAL values (restore for Phase 2):
 //   PLATFORM_POOL_SIZE = 60, PLATFORMS_PER_ROW = 1
-export const PLATFORM_POOL_SIZE = 120 // total platform objects in pool
+export const PLATFORM_POOL_SIZE = 60 // total platform objects in pool
 export const PLATFORM_COLUMNS = 6 // number of equal-width columns across the screen
 export const FLOOR_PLATFORMS = 6 // platforms in the starting floor row (= PLATFORM_COLUMNS)
-export const PLATFORMS_PER_ROW = 2 // platforms placed per regular row PLAYTEST: paired
+// PLATFORMS_PER_ROW is the maximum group size — sets pool slot stride.
+// Tier 1 uses 3, Tier 3 uses 2, Tiers 4-5 use 1 (read from DifficultyConfig.platformsPerRow).
+// Pool constraint: (60 - 6) = 54 slots / 3 = 18 row-groups allocated.
+// At runtime, groups smaller than 3 leave trailing slots inactive — zero cost.
+export const PLATFORMS_PER_ROW = 3
 export const PLATFORM_ROW_HEIGHT = 200 // px between rows fits within playtest jump peak of 722px
 
 //PLATFORM_WIDTH_APPROX is an approximation for GameCanvas rendering only.
@@ -120,7 +124,7 @@ export const GYRO_DEADZONE = 0.05 // g noise floor filter (~3° of tilt)
 // MAX_HORIZONTAL_SPEED is shared with gyro (Section 3).
 export const TOUCH_ACCELERATION = 0.06 // units/ms² acceleration while zone is held
 export const TOUCH_DECEL = 0.12 // units/ms² deceleration after release
-export const MAX_HORIZONTAL_SPEED = 1.2 // units/ms  shared cap for gyro and touch
+export const MAX_HORIZONTAL_SPEED = 0.8 // units/ms  shared cap for gyro and touch. PLAYTEST-EASY restore: 1.2
 
 // STARTUP TIMING
 // Input is suppressed at run start so stale gyro tilt from the previous run
@@ -191,6 +195,10 @@ export const FAKE_PLATFORM_ALPHA = 0.45 // constant opacity for fake platforms
 
 // (stubs, not yet active in gameplay)
 export const MAX_ENEMIES = 8
+export const ENEMY_BASE_SPEED = 0.08 // units/ms patrol speed at Tier 2 (~2/3 of player walk speed)
+// ENEMY_WIDTH is not a fixed constant — it is set at spawn time to 2 × colWidth
+// (SCREEN_WIDTH / PLATFORM_COLUMNS) so it spans exactly two column widths.
+export const ENEMY_HEIGHT = 30 // px — taller than platform (18px), reads as a distinct threat
 export const MAX_POWER_UPS_ON_SCREEN = 3
 export const CRUMBLE_DELAY_MS = 300
 export const JETPACK_DURATION_MS = 5000
