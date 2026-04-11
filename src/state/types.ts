@@ -15,7 +15,35 @@
 // to match GameScreen's actual local phase type and architecture doc §5.
 // appStore.gamePhase default updated to "home" accordingly.
 // ---------------------------------------------------------------------------
-export type GamePhase = "home" | "playing" | "gameover" | "leaderboard" | "settings" | "shop"
+export type GamePhase =
+  | "home"
+  | "playing"
+  | "gameover"
+  | "leaderboard"
+  | "settings"
+  | "shop"
+
+// ---------------------------------------------------------------------------
+// DifficultyConfig produced by DifficultyScaler.getDifficultyConfig().
+// Consumed by PlatformGenerator.recyclePlatforms() on every recycled row.
+// current tier number (1–5), used for logging
+// typeProbabilities cumulative upper bounds for pickType LCG selection
+// enemySpeedMultiplier multiplied by ENEMY_BASE_SPEED at enemy spawn
+// enemiesEnabled false for Tier 1 (rows 0–49), true from Tier 2 onward
+// ---------------------------------------------------------------------------
+export type DifficultyConfig = {
+  tier: number
+  platformsPerRow: number
+  typeProbabilities: {
+    static: number
+    moving: number
+    breakable: number
+    disappearing: number
+    fake: number
+  }
+  enemySpeedMultiplier: number
+  enemiesEnabled: boolean
+}
 
 export type PlatformType =
   | "static"
