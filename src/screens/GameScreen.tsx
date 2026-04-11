@@ -94,8 +94,16 @@ export default function GameScreen() {
     [setPersonalBest],
   )
 
-  const { playerX, playerY, cameraY, platforms, score, globalTime, restartRun } =
-    useGameLoop(onGameOver, sensitivity)
+  const {
+    playerX,
+    playerY,
+    cameraY,
+    platforms,
+    enemies,
+    score,
+    globalTime,
+    restartRun,
+  } = useGameLoop(onGameOver, sensitivity)
 
   // handlePlay — from HomeOverlay "Play" button.
   const handlePlay = useCallback(() => {
@@ -182,6 +190,7 @@ export default function GameScreen() {
         playerY={playerY}
         cameraY={cameraY}
         platforms={platforms}
+        enemies={enemies}
         globalTime={globalTime}
       />
 
@@ -216,13 +225,15 @@ export default function GameScreen() {
       )}
 
       {/* Layer 5 — Home overlay */}
-      {phase === "home" && hasSetName && <HomeOverlay 
-        onPlay={handlePlay}
-        onShowLeaderboard={() => setShowLeaderboard(true)}
-        onShowSettings={handleShowSettingsFromHome}
-        onShowShop={() => setShowShop(true)}
-        onShowInventory={() => setShowInventory(true)}
-      />}
+      {phase === "home" && hasSetName && (
+        <HomeOverlay
+          onPlay={handlePlay}
+          onShowLeaderboard={() => setShowLeaderboard(true)}
+          onShowSettings={handleShowSettingsFromHome}
+          onShowShop={() => setShowShop(true)}
+          onShowInventory={() => setShowInventory(true)}
+        />
+      )}
 
       {/* Layer 6 — Game over overlay */}
       {phase === "gameover" && (
@@ -235,10 +246,24 @@ export default function GameScreen() {
       )}
 
       {/* Layer 7 — Fullscreen overlays */}
-      {showLeaderboard && <LeaderboardOverlay visible={true} onClose={() => setShowLeaderboard(false)} />}
-      {showSettings && <SettingsOverlay visible={true} onClose={handleCloseSettings} />}
-      {showShop && <ShopOverlay visible={true} onClose={() => setShowShop(false)} />}
-      {showInventory && <InventoryOverlay visible={true} onClose={() => setShowInventory(false)} />}
+      {showLeaderboard && (
+        <LeaderboardOverlay
+          visible={true}
+          onClose={() => setShowLeaderboard(false)}
+        />
+      )}
+      {showSettings && (
+        <SettingsOverlay visible={true} onClose={handleCloseSettings} />
+      )}
+      {showShop && (
+        <ShopOverlay visible={true} onClose={() => setShowShop(false)} />
+      )}
+      {showInventory && (
+        <InventoryOverlay
+          visible={true}
+          onClose={() => setShowInventory(false)}
+        />
+      )}
     </View>
   )
 }
