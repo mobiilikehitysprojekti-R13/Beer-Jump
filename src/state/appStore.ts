@@ -17,11 +17,13 @@ type AppStore = {
   setPersonalBest: (score: number) => Promise<void>
 
   // Settings (persisted to AsyncStorage)
-  soundEnabled: boolean
-  touchControlsEnabled: boolean // default: true
-  gyroEnabled: boolean // default: true
-  gyroSensitivity: number // default: GYRO_SENSITIVITY (18)
-  toggleSound: () => void
+  musicVolume: number
+  sfxVolume: number
+  touchControlsEnabled: boolean
+  gyroEnabled: boolean
+  gyroSensitivity: number
+  setMusicVolume: (val: number) => void
+  setSfxVolume: (val: number) => void
   toggleTouchControls: () => void
   toggleGyroEnabled: () => void
   setSensitivity: (val: number) => void
@@ -63,14 +65,14 @@ export const useAppStore = create<AppStore>()(
             console.log("appStore", "new personal best", { old: s.personalBest, new: score })
             // Submit to Firestore in the background
             import("../services/firebase/leaderboard").then(({ submitScore }) => {
-              submitScore(score, {
-                level: s.playerLevel,
-                xp: s.xp,
-                coins: s.coins,
+                submitScore(score, {
+                  level: s.playerLevel,
+                  xp: s.xp,
+                  coins: s.coins,
                 platform: Platform.OS as 'ios' | 'android',
-              }).catch((error) => {
-                console.warn("Failed to submit score to Firestore:", error)
-              })
+                }).catch((error) => {
+                  console.warn("Failed to submit score to Firestore:", error)
+                })
             })
             return { personalBest: score }
           }
@@ -80,14 +82,20 @@ export const useAppStore = create<AppStore>()(
       },
 
       // Settings
-      soundEnabled: true,
+      musicVolume: 0.5,
+      sfxVolume: 0.8,
       touchControlsEnabled: true,
       gyroEnabled: true,
-      gyroSensitivity: 1, // initial value set to 1 on first app start as requested
+      gyroSensitivity: 1,
 
-      toggleSound: () => {
-        console.log("appStore", "toggleSound")
-        return set((s) => ({ soundEnabled: !s.soundEnabled }))
+      setMusicVolume: (val) => {
+        const clamped = Math.max(0, Math.min(1, val))
+        return set({ musicVolume: clamped })
+      },
+
+      setSfxVolume: (val) => {
+        const clamped = Math.max(0, Math.min(1, val))
+        return set({ sfxVolume: clamped })
       },
 
       toggleTouchControls: () =>
@@ -151,7 +159,8 @@ export const useAppStore = create<AppStore>()(
       // they are either transient (gamePhase) or not yet wired (auth/progression).
       partialize: (s) => ({
         personalBest: s.personalBest,
-        soundEnabled: s.soundEnabled,
+        musicVolume: s.musicVolume,
+        sfxVolume: s.sfxVolume,
         touchControlsEnabled: s.touchControlsEnabled,
         gyroEnabled: s.gyroEnabled,
         gyroSensitivity: s.gyroSensitivity,
