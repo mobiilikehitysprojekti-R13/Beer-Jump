@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { usePlayClick } from '../../hooks/usePlayClick'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getPlayerInventory, InventoryItem } from '../../services/firebase/inventory'
@@ -9,6 +10,7 @@ type Props = {
 }
 
 export function InventoryOverlay({ visible, onClose }: Props) {
+  const playClick = usePlayClick()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,9 +54,16 @@ export function InventoryOverlay({ visible, onClose }: Props) {
       ) : error ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : (
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentContainer}
+        >
           <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name='account-circle-outline' size={22} color='#FFFFFF' />
+            <MaterialCommunityIcons
+              name="account-circle-outline"
+              size={22}
+              color="#FFFFFF"
+            />
             <Text style={styles.sectionTitle}>Characters</Text>
           </View>
           {characters.length === 0 ? (
@@ -85,7 +94,13 @@ export function InventoryOverlay({ visible, onClose }: Props) {
         </ScrollView>
       )}
 
-      <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={() => {
+          playClick()
+          onClose()
+        }}
+      >
         <Text style={styles.closeText}>Close</Text>
       </TouchableOpacity>
     </View>

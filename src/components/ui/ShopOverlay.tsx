@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { usePlayClick } from '../../hooks/usePlayClick'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { getShopItems, ShopItem } from '../../services/firebase/shop'
@@ -9,6 +10,7 @@ type Props = {
 }
 
 export function ShopOverlay({ visible, onClose }: Props) {
+  const playClick = usePlayClick()
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +100,13 @@ export function ShopOverlay({ visible, onClose }: Props) {
         </ScrollView>
       )}
 
-      <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={() => {
+          playClick()
+          onClose()
+        }}
+      >
         <Text style={styles.closeText}>Close</Text>
       </TouchableOpacity>
     </View>
