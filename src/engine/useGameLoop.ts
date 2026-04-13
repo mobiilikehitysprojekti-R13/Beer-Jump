@@ -64,6 +64,8 @@ import { log, logFromWorklet } from "../utils/logger"
 // ---------------------------------------------------------------------------
 export function useGameLoop(
   onGameOver: (score: number) => void,
+  onJump: () => void,
+  onStomp: () => void,
   sensitivity: number,
 ) {
   // -------------------------------------------------------------------------
@@ -213,6 +215,7 @@ export function useGameLoop(
       if (enemyResult === "stomp") {
         // Silent normal bounce — same velocity as a platform landing
         GV.velocityY.value = JUMP_VELOCITY
+        runOnJS(onStomp)()
       } else if (enemyResult === "death") {
         GV.isDead.value = true
         runOnJS(onGameOver)(GV.score.value)
@@ -230,6 +233,7 @@ export function useGameLoop(
       if (hit) {
         const vyBeforeBounce = GV.velocityY.value
         GV.velocityY.value = JUMP_VELOCITY
+        runOnJS(onJump)()
         logFromWorklet("physics", "platform bounce", {
           px: GV.playerX.value,
           py: GV.playerY.value,
@@ -290,7 +294,7 @@ export function useGameLoop(
         }
       }
     },
-    [onGameOver, sensitivity],
+    [onGameOver, onJump, onStomp, sensitivity],
   )
 
   // Register the callback INACTIVE. It is activated by restartRun() below.
