@@ -11,8 +11,9 @@ import {
   PLATFORM_COLUMNS,
   SCREEN_WIDTH,
   CRUMBLE_DELAY_MS,
+  MAX_ENEMIES,
 } from "../constants/gameConfig"
-import { Platform } from "../state/types"
+import { Enemy, Platform } from "../state/types"
 
 // Platform collision width computed the same way as PlatformGenerator and GameCanvas.
 // Must stay in sync with SCREEN_WIDTH / PLATFORM_COLUMNS.
@@ -168,10 +169,10 @@ export function checkPlatformCollision(
     if (!p.active) continue
 
     // Fake platforms — always fall through
-    if (p.type === 'fake') continue
+    if (p.type === "fake") continue
 
     // Breakable platforms — skip if already crumbling (bounce already happened)
-    if (p.type === 'breakable' && p.crumbling) continue
+    if (p.type === "breakable" && p.crumbling) continue
 
     // Horizontal overlap check
     if (px + PLAYER_WIDTH <= p.x || px >= p.x + COLLISION_PLATFORM_WIDTH)
@@ -180,7 +181,7 @@ export function checkPlatformCollision(
     if (prevFeetY <= p.y && feetY >= p.y) {
       // Trigger breakable crumble on first hit — collision registers this
       // frame so BeerGuy bounces, then crumbling = true disables future hits.
-      if (p.type === 'breakable') {
+      if (p.type === "breakable") {
         p.crumbling = true
       }
       return true
@@ -199,4 +200,75 @@ export function wrapHorizontal(x: number): number {
   if (x + PLAYER_WIDTH < 0) return SCREEN_WIDTH
   if (x > SCREEN_WIDTH) return -PLAYER_WIDTH
   return x
+}
+
+// ---------------------------------------------------------------------------
+// tickEnemy
+// Advances an enemy along its horizontal patrol path each frame.
+// Reverses direction at patrol boundaries. Mutates enemy in place.
+// Called from gameTick for every active enemy (active === true).
+// ---------------------------------------------------------------------------
+export function tickEnemy(e: Enemy, dt: number): void {
+  "worklet"
+  e.x += e.velocityX * dt
+
+  if (e.x <= e.patrolLeft) {
+    e.x = e.patrolLeft
+    e.velocityX = e.velocityX < 0 ? -e.velocityX : e.velocityX
+  } else if (e.x + e.width >= e.patrolRight) {
+    e.x = e.patrolRight - e.width
+    e.velocityX = e.velocityX > 0 ? -e.velocityX : e.velocityX
+  }
+}
+
+// ---------------------------------------------------------------------------
+// checkEnemyCollision
+// Returns 'stomp', 'death', or null.
+//
+// Guard: skips enemies where alive === false OR active === false.
+// A stomped enemy is immediately fully deactivated (both flags false) so it
+// cannot be stomped again or deal contact damage on any subsequent frame.
+//
+// Stomp (feet crossed enemy top while falling, velocityY > 0):
+//   Sets alive=false and active=false immediately — instant disappear.
+//   Returns 'stomp' — caller applies JUMP_VELOCITY (normal bounce).
+//
+// Death (AABB overlap from side or below, enemy alive):
+//   Returns 'death' — caller sets isDead=true and fires onGameOver.
+//
+// prevPy tunnelling guard: uses the player Y from before the move step,
+// same pattern as checkPlatformCollision.
+// ---------------------------------------------------------------------------
+export function checkEnemyCollision(
+  px: number,
+  py: number,
+  prevPy: number,
+  velocityY: number,
+  enemyPool: Enemy[],
+): "stomp" | "death" | null {
+  "worklet"
+  const feetY = py + PLAYER_HEIGHT
+  const prevFeetY = prevPy + PLAYER_HEIGHT
+  const headY = py
+
+  for (let i = 0; i < MAX_ENEMIES; i++) {
+    const e = enemyPool[i]
+    if (!e.active || !e.alive) continue
+
+    // Horizontal overlap
+    if (px + PLAYER_WIDTH <= e.x || px >= e.x + e.width) continue
+
+    // Stomp — feet crossed the top face of the enemy while falling
+    if (velocityY > 0 && prevFeetY <= e.y && feetY >= e.y) {
+      e.alive = false // prevents any further collision with this enemy
+      e.active = false // removes from tick and render immediately
+      return "stomp"
+    }
+
+    // Side / below contact — instant death
+    if (feetY > e.y && headY < e.y + e.height) {
+      return "death"
+    }
+  }
+  return null
 }

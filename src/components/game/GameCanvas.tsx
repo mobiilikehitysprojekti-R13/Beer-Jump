@@ -1,7 +1,14 @@
 import { StyleSheet } from "react-native"
-import { Canvas, Rect, Fill, Picture, createPicture, Skia } from "@shopify/react-native-skia"
+import {
+  Canvas,
+  Rect,
+  Fill,
+  Picture,
+  createPicture,
+  Skia,
+} from "@shopify/react-native-skia"
 import { useDerivedValue, SharedValue } from "react-native-reanimated"
-import { Platform } from "../../state/types"
+import { Enemy, Platform } from "../../state/types"
 import {
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
@@ -13,6 +20,7 @@ import {
   CRUMBLE_DELAY_MS,
   DISAPPEAR_PERIOD_MS,
   FAKE_PLATFORM_ALPHA,
+  MAX_ENEMIES,
 } from "../../constants/gameConfig"
 
 // ---------------------------------------------------------------------------
@@ -24,12 +32,13 @@ const RENDER_PLATFORM_WIDTH = SCREEN_WIDTH / PLATFORM_COLUMNS
 // Platform colors hardcoded hex, game world colors.
 // Must NOT use CSS variables or theme colors — these must not invert in dark mode.
 // ---------------------------------------------------------------------------
-const COLOR_STATIC = Skia.Color('#4CAF50') // green
-const COLOR_MOVING = Skia.Color('#2196F3') // blue
-const COLOR_FAKE = Skia.Color('#9E9E9E') // grey
-const COLOR_DISAPPEARING = Skia.Color('#FF9800') // amber
-const COLOR_BREAKABLE = Skia.Color('#F44336') // red
-const COLOR_HIGHLIGHT = Skia.Color('#FFFFFF') // white top-edge highlight
+const COLOR_STATIC = Skia.Color("#4CAF50") // green
+const COLOR_MOVING = Skia.Color("#2196F3") // blue
+const COLOR_FAKE = Skia.Color("#9E9E9E") // grey
+const COLOR_DISAPPEARING = Skia.Color("#FF9800") // amber
+const COLOR_BREAKABLE = Skia.Color("#F44336") // red
+const COLOR_HIGHLIGHT = Skia.Color("#FFFFFF") // white top-edge highlight
+const COLOR_ENEMY = Skia.Color("#36013F") // deep purple
 
 // Reusable paint object — allocated once, mutated per draw call inside the
 // createPicture worklet. createPicture records commands; the paint state at
@@ -73,10 +82,18 @@ type Props = {
   playerY: SharedValue<number>
   cameraY: SharedValue<number>
   platforms: SharedValue<Platform[]>
+  enemies: SharedValue<Enemy[]>
   globalTime: SharedValue<number>
 }
 
-export function GameCanvas({ playerX, playerY, cameraY, platforms, globalTime }: Props) {
+export function GameCanvas({
+  playerX,
+  playerY,
+  cameraY,
+  platforms,
+  enemies,
+  globalTime,
+}: Props) {
   // -------------------------------------------------------------------------
   // platformPicture — the entire platform scene recorded as a Skia display list.
   //
@@ -91,7 +108,7 @@ export function GameCanvas({ playerX, playerY, cameraY, platforms, globalTime }:
   // inside the hot loop.
   // -------------------------------------------------------------------------
   const platformPicture = useDerivedValue(() => {
-    'worklet'
+    "worklet"
     const cam = cameraY.value
     const t = globalTime.value
     const TWO_PI = 6.283185307
@@ -110,20 +127,20 @@ export function GameCanvas({ playerX, playerY, cameraY, platforms, globalTime }:
         let color: ReturnType<typeof Skia.Color>
         let alpha: number
 
-        if (p.type === 'static') {
+        if (p.type === "static") {
           color = COLOR_STATIC
           alpha = 1
-        } else if (p.type === 'moving') {
+        } else if (p.type === "moving") {
           color = COLOR_MOVING
           alpha = 1
-        } else if (p.type === 'fake') {
+        } else if (p.type === "fake") {
           color = COLOR_FAKE
           alpha = FAKE_PLATFORM_ALPHA
-        } else if (p.type === 'disappearing') {
+        } else if (p.type === "disappearing") {
           color = COLOR_DISAPPEARING
           // Sine wave: oscillates smoothly 0.0 ↔ 1.0
           alpha = 0.5 + 0.5 * Math.sin((t * TWO_PI) / DISAPPEAR_PERIOD_MS)
-        } else if (p.type === 'breakable') {
+        } else if (p.type === "breakable") {
           color = COLOR_BREAKABLE
           // Linear drain after trigger, fully opaque before
           alpha = p.crumbling
@@ -157,6 +174,45 @@ export function GameCanvas({ playerX, playerY, cameraY, platforms, globalTime }:
   // BeerGuy Y — single derived value, same pattern as original
   const screenPlayerY = useDerivedValue(() => playerY.value - cameraY.value)
 
+  // enemyPicture — all flying enemies in one GPU draw call via Picture.
+  // Enemies are 2 column-widths wide and float at row Y with no platform.
+  // Visual: dark red body with a 2px highlight on top and bottom edges
+  // to read as a flying object distinct from grounded platforms.
+  const enemyPicture = useDerivedValue(() => {
+    "worklet"
+    const cam = cameraY.value
+
+    return createPicture((canvas) => {
+      for (let i = 0; i < MAX_ENEMIES; i++) {
+        const e = enemies.value[i]
+        if (!e || !e.active || !e.alive) continue
+
+        const screenY = e.y - cam
+
+        // Cull — skip fully off-screen enemies
+        if (screenY > SCREEN_HEIGHT || screenY + e.height < 0) continue
+
+        // Body
+        paint.setColor(COLOR_ENEMY)
+        paint.setAlphaf(1)
+        canvas.drawRect(Skia.XYWHRect(e.x, screenY, e.width, e.height), paint)
+
+        // Top highlight strip
+        paint.setColor(COLOR_HIGHLIGHT)
+        paint.setAlphaf(0.45)
+        canvas.drawRect(Skia.XYWHRect(e.x, screenY, e.width, 2), paint)
+
+        // Bottom highlight strip — signals flying (no platform beneath)
+        paint.setColor(COLOR_HIGHLIGHT)
+        paint.setAlphaf(0.2)
+        canvas.drawRect(
+          Skia.XYWHRect(e.x, screenY + e.height - 2, e.width, 2),
+          paint,
+        )
+      }
+    })
+  })
+
   return (
     <Canvas style={StyleSheet.absoluteFill}>
       {/* Background */}
@@ -164,6 +220,9 @@ export function GameCanvas({ playerX, playerY, cameraY, platforms, globalTime }:
 
       {/* All platforms — one GPU draw call via Picture */}
       <Picture picture={platformPicture} />
+
+      {/* All enemies — one GPU draw call via Picture, drawn above platforms */}
+      <Picture picture={enemyPicture} />
 
       {/* BeerGuy — amber rectangle (Phase 3: replace with pixel art sprite) */}
       <Rect
