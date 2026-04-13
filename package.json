@@ -16,6 +16,7 @@
     "@shopify/react-native-skia": "2.2.12",
     "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.13",
+    "expo-av": "~16.0.8",
     "expo-sensors": "~15.0.8",
     "expo-status-bar": "~3.0.6",
     "firebase": "^12.11.0",
