@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePlayClick } from '../../hooks/usePlayClick'
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
 import { useAppStore } from "../../state/appStore"
 import { LeaderboardOverlay } from './LeaderboardOverlay'
@@ -34,33 +35,62 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
   s.personalBest
 
 export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowShop, onShowInventory }: Props) {
+  const playClick = usePlayClick()
   const personalBest = useAppStore(selectPersonalBest)
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Beer Jump</Text>
       <Text style={styles.best}>Best: {personalBest}</Text>
-      <TouchableOpacity style={styles.button} onPress={onPlay}>
+      <TouchableOpacity style={styles.button} onPress={() => {
+          playClick()
+          onPlay()
+        }}
+      >
         <Text style={styles.buttonText}>Play</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onShowLeaderboard}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => {
+          playClick()
+          onShowLeaderboard()
+        }}
+      >
         <Text style={styles.buttonText}>Leaderboard</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onShowSettings}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => {
+          playClick()
+          onShowSettings()
+        }}
+      >
         <Text style={styles.buttonText}>Settings</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onShowShop}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => {
+          playClick()
+          onShowShop()
+        }}
+      >
         <Text style={styles.buttonText}>Shop</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onShowInventory}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => {
+          playClick()
+          onShowInventory()
+        }}
+      >
         <Text style={styles.buttonText}>Inventory</Text>
       </TouchableOpacity>
 
-
+      
     </View>
   )
 }
