@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { usePlayClick } from '../../hooks/usePlayClick'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 
 type Props = {
@@ -8,6 +9,7 @@ type Props = {
 }
 
 export function PauseOverlay({ visible, onResume, onOpenSettings }: Props) {
+  const playClick = usePlayClick()
   if (!visible) return null
 
   return (
@@ -15,12 +17,24 @@ export function PauseOverlay({ visible, onResume, onOpenSettings }: Props) {
       <View style={styles.backdrop} />
       <View style={styles.content}>
         <Text style={styles.title}>Paused</Text>
-        <TouchableOpacity style={styles.resumeButton} onPress={onResume}>
+        <TouchableOpacity
+          style={styles.resumeButton}
+          onPress={() => {
+            playClick()
+            onResume()
+          }}
+        >
           <Text style={styles.resumeText}>▶ Resume</Text>
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings}>
+      <TouchableOpacity
+        style={styles.settingsButton}
+        onPress={() => {
+          playClick()
+          onOpenSettings()
+        }}
+      >
         <MaterialCommunityIcons name='cog-outline' size={28} color='#FFFFFF' />
       </TouchableOpacity>
     </View>
