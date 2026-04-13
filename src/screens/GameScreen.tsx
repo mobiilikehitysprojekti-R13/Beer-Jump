@@ -3,6 +3,7 @@ import { StyleSheet, View, AppState } from "react-native"
 import { useAppStore } from "../state/appStore"
 import { useGameLoop } from "../engine/useGameLoop"
 import { useTiltInput } from "../hooks/useTiltInput"
+import { useAudio } from "../hooks/useAudio"
 import { GameCanvas } from "../components/game/GameCanvas"
 import { HUD } from "../components/ui/HUD"
 import { TouchZones } from "../components/ui/TouchZones"
@@ -81,17 +82,21 @@ export default function GameScreen() {
 
   useTiltInput()
 
+  const { playJump, playStomp, playDeath, playClick, startMusic, stopMusic } = useAudio()
+
   // onGameOver — called by the worklet via runOnJS on death.
   // Wrapped in useCallback: captured in the worklet closure via runOnJS.
   // Stable dep: setPersonalBest is a Zustand action (stable reference).
   const onGameOver = useCallback(
     async (score: number) => {
+      stopMusic()
+      playDeath()
       await setPersonalBest(score)
       setFinalScore(score)
       setPhase("gameover")
       log.info("gameLoop", "onGameOver", { score })
     },
-    [setPersonalBest],
+    [setPersonalBest, stopMusic, playDeath],
   )
 
   const {
@@ -103,28 +108,34 @@ export default function GameScreen() {
     score,
     globalTime,
     restartRun,
-  } = useGameLoop(onGameOver, sensitivity)
+  } = useGameLoop(onGameOver, playJump, playStomp, sensitivity)
 
   // handlePlay — from HomeOverlay "Play" button.
   const handlePlay = useCallback(() => {
+    playClick()
     isPaused.value = false
     setPhase("playing")
     restartRun()
-  }, [restartRun])
+    startMusic()
+  }, [restartRun, playClick, startMusic])
 
   // handlePlayAgain — from GameOverOverlay "Play Again" button.
   const handlePlayAgain = useCallback(() => {
+    playClick()
     isPaused.value = false
     setPhase("playing")
     restartRun()
-  }, [restartRun])
+    startMusic()
+  }, [restartRun, playClick, startMusic])
 
   // handleHome — from GameOverOverlay "Home" button.
   // Does NOT call restartRun() — the loop stays idle.
   const handleHome = useCallback(() => {
+    playClick()
     setPhase("home")
-    isPaused.value = true // ensure loop is paused while home is shown
-  }, [])
+    stopMusic()
+    isPaused.value = true
+  }, [playClick, stopMusic])
 
   const handlePause = useCallback(() => {
     isPaused.value = true
