@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { usePlayClick } from '../../hooks/usePlayClick'
 import { StyleSheet, View, Text, TouchableOpacity, TextInput } from "react-native"
 import { useAppStore } from "../../state/appStore"
 
@@ -27,6 +28,7 @@ export function NameInputOverlay({
   subtitle = 'Enter your player name:',
   buttonText = 'Start Playing'
 }: Props) {
+  const playClick = usePlayClick()
   const [name, setName] = useState(initialName)
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export function NameInputOverlay({
 
   const handleSubmit = () => {
     if (name.trim()) {
+      playClick()
       onNameSubmit(name.trim())
     }
   }
