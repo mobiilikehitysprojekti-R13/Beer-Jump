@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Switch } from "react-native"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { useAppStore } from "../../state/appStore"
 import { NameInputOverlay } from "./NameInputOverlay"
+import { useActiveTheme } from "../../hooks/useActiveTheme"
+import { ThemeBackdrop } from "./ThemeBackdrop"
 
 type Props = {
   visible: boolean
@@ -27,6 +29,7 @@ export function SettingsOverlay({ visible, onClose }: Props) {
   const toggleGyroEnabled = useAppStore(selectToggleGyroEnabled)
   const setSensitivity = useAppStore(selectSetSensitivity)
   const setPlayerName = useAppStore(selectSetPlayerName)
+  const activeTheme = useActiveTheme()
 
   const [showNameInput, setShowNameInput] = useState(false)
 
@@ -43,21 +46,22 @@ export function SettingsOverlay({ visible, onClose }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: activeTheme.menuBackground }]}>
+      <ThemeBackdrop scene={activeTheme.scene} />
       <View style={styles.titleRow}>
         <MaterialCommunityIcons name='cog-outline' size={42} color='#FFA000' />
-        <Text style={styles.title}>Settings</Text>
+        <Text style={[styles.title, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>Settings</Text>
       </View>
 
       {/* Change Name */}
-      <TouchableOpacity style={styles.button} onPress={() => setShowNameInput(true)}>
-        <Text style={styles.buttonText}>Change Name</Text>
-        <Text style={styles.subText}>{playerName}</Text>
+      <TouchableOpacity style={[styles.button, { backgroundColor: activeTheme.buttonBackground, borderColor: activeTheme.cardBorder }]} onPress={() => setShowNameInput(true)}>
+        <Text style={[styles.buttonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>Change Name</Text>
+        <Text style={[styles.subText, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>{playerName}</Text>
       </TouchableOpacity>
 
       {/* Touch Controls Toggle */}
       <View style={styles.settingRow}>
-        <Text style={styles.settingText}>Touch Controls</Text>
+        <Text style={[styles.settingText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>Touch Controls</Text>
         <Switch
           value={touchControlsEnabled}
           onValueChange={toggleTouchControls}
@@ -68,7 +72,7 @@ export function SettingsOverlay({ visible, onClose }: Props) {
 
       {/* Gyro Enabled Toggle */}
       <View style={styles.settingRow}>
-        <Text style={styles.settingText}>Gyro Tilting</Text>
+        <Text style={[styles.settingText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>Gyro Tilting</Text>
         <Switch
           value={gyroEnabled}
           onValueChange={toggleGyroEnabled}
@@ -79,7 +83,7 @@ export function SettingsOverlay({ visible, onClose }: Props) {
 
       {/* Gyro Sensitivity */}
       <View style={styles.settingRow}>
-        <Text style={styles.settingText}>Gyro Sensitivity: {gyroSensitivity}</Text>
+        <Text style={[styles.settingText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>Gyro Sensitivity: {gyroSensitivity}</Text>
         <View style={styles.sensitivityControls}>
           <TouchableOpacity style={styles.smallButton} onPress={() => adjustSensitivity(-1)}>
             <Text style={styles.smallButtonText}>-</Text>
@@ -90,8 +94,8 @@ export function SettingsOverlay({ visible, onClose }: Props) {
         </View>
       </View>
 
-      <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-        <Text style={styles.closeText}>Close</Text>
+      <TouchableOpacity style={[styles.closeButton, { backgroundColor: activeTheme.buttonBackground, borderColor: activeTheme.cardBorder }]} onPress={onClose}>
+        <Text style={[styles.closeText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>Close</Text>
       </TouchableOpacity>
     </View>
   )

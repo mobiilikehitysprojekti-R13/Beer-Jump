@@ -39,9 +39,9 @@ export const SCREEN_HEIGHT = height
 // Tuning order: adjust MAX_FALL_SPEED to control how floaty the descent feels.
 //   Lower = driftier. Minimum practical value is ~0.5 (very slow fall).
 //   GRAVITY controls overall arc shape. JUMP_VELOCITY controls peak height.
-export const GRAVITY = 0.02 // units/ms²  normal gravity, snappy upswing
-export const JUMP_VELOCITY = -3.8 // units/ms   negative = upward
-export const MAX_FALL_SPEED = 1.0 // units/ms   PLAYTEST: slow drift down = floaty feel
+export const GRAVITY = 0.018 // units/ms²  slightly slower jump arc
+export const JUMP_VELOCITY = -3.6 // units/ms   negative = upward, tuned to keep similar jump height
+export const MAX_FALL_SPEED = 0.9 // units/ms   slightly slower descent
 
 // PLATFORM LAYOUT
 //
@@ -98,7 +98,7 @@ export const PLATFORM_MAX_GAP = 20
 //
 // PLAYTEST-EASY values (current):
 //   GYRO_SENSITIVITY    = 1.2   (comfortable tilt at ~0.3g → vx ≈ 0.36 → good speed)
-//   MAX_HORIZONTAL_SPEED = 1.2  (full tilt or more → caps here → crosses screen ~300ms)
+//   MAX_HORIZONTAL_SPEED = 1.1  (full tilt or more → caps here → crosses screen quickly)
 //   Effect: gentle 20° tilt → ~0.33g → vx ≈ 0.4 units/ms, responsive but not twitchy
 //           strong tilt (>45°) hits max speed immediately
 //
@@ -118,18 +118,18 @@ export const GYRO_DEADZONE = 0.05 // g noise floor filter (~3° of tilt)
 //   Releasing decelerates back to zero at TOUCH_DECEL rate.
 //   When gyro is active, touch decel is suppressed so they don't fight.
 // At 60fps (dt ≈ 16ms):
-//   TOUCH_ACCELERATION = 0.06 → adds ~0.96 units/ms per second of holding
-//   TOUCH_DECEL        = 0.12 → stops from max speed in ~500ms after release
-// Touch response felt fine at original values unchanged.
+//   TOUCH_ACCELERATION = 0.10 → adds speed more quickly while still feeling controllable
+//   TOUCH_DECEL        = 0.10 → slightly longer glide after release
+// Touch response is now a bit snappier.
 // MAX_HORIZONTAL_SPEED is shared with gyro (Section 3).
-export const TOUCH_ACCELERATION = 0.06 // units/ms² acceleration while zone is held
-export const TOUCH_DECEL = 0.12 // units/ms² deceleration after release
-export const MAX_HORIZONTAL_SPEED = 0.8 // units/ms  shared cap for gyro and touch. PLAYTEST-EASY restore: 1.2
+export const TOUCH_ACCELERATION = 0.1 // units/ms² acceleration while zone is held
+export const TOUCH_DECEL = 0.1 // units/ms² deceleration after release
+export const MAX_HORIZONTAL_SPEED = 1.1 // units/ms  shared cap for gyro and touch. PLAYTEST-EASY restore: 1.2
 
 // STARTUP TIMING
 // Input is suppressed at run start so stale gyro tilt from the previous run
 // does not immediately send BeerGuy sideways at the moment grace ends.
-export const INPUT_GRACE_MS = 500 // ms input suppressed at each run start
+export const INPUT_GRACE_MS = 150 // ms input suppressed at each run start
 // Must equal GAME_START_DELAY_MS (Section 10) so tilt input
 // activates at the same moment the game starts moving.
 // SCORE
@@ -139,7 +139,13 @@ export const SCORE_PER_UNIT = 10 // camera units scrolled per score point
 export const PLAYER_WIDTH = 48 // px
 export const PLAYER_HEIGHT = 48 // px
 
-// LOOP TIMING
+// CHARACTER ANIMATION
+// Single source of truth for bottle jump animation speed.
+export const CHARACTER_JUMP_ANIM_FRAME_MS = 150 // ms per frame
+// Positive offset moves rendered sprite downward so visual feet meet platform top.
+export const CHARACTER_RENDER_CONTACT_OFFSET = 34 // px
+
+// LOOP TIMING 
 //
 // Cap on per-frame dt to prevent physics explosion on lag spikes.
 // Set to 2× target frame time (2 × 16ms). Never set below 16.
