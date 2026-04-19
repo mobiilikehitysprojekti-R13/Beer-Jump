@@ -141,7 +141,10 @@ export const PLAYER_HEIGHT = 48 // px
 
 // CHARACTER ANIMATION
 // Single source of truth for bottle jump animation speed.
-export const CHARACTER_JUMP_ANIM_FRAME_MS = 150 // ms per frame
+export const CHARACTER_JUMP_ANIM_FRAME_MS = 100 // ms per frame
+// Start jump animation slightly before actual landing while descending.
+// 2 frame look-ahead makes landing happen around frame 3.
+export const CHARACTER_LANDING_ANTICIPATION_MS = 300 // ms look-ahead window
 // Positive offset moves rendered sprite downward so visual feet meet platform top.
 export const CHARACTER_RENDER_CONTACT_OFFSET = 34 // px
 

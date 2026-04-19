@@ -111,9 +111,6 @@ export default function GameScreen() {
     enemies,
     score,
     globalTime,
-    isAirborne,
-    jumpAnimActive,
-    jumpAnimStartTime,
     restartRun,
   } = useGameLoop(onGameOver, sensitivity)
 
@@ -215,9 +212,6 @@ export default function GameScreen() {
         platforms={platforms}
         enemies={enemies}
         globalTime={globalTime}
-        isAirborne={isAirborne}
-        jumpAnimActive={jumpAnimActive}
-        jumpAnimStartTime={jumpAnimStartTime}
         backgroundColor={activeTheme.gameBackground}
         backgroundScene={activeTheme.scene}
         characterTextureName={activeSkin}

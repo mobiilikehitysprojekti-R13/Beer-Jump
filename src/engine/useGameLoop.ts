@@ -18,7 +18,6 @@ import {
 } from "./physics"
 import * as GV from "../state/gameValues"
 import {
-  CHARACTER_JUMP_ANIM_FRAME_MS,
   JUMP_VELOCITY,
   SCORE_PER_UNIT,
   SCREEN_WIDTH,
@@ -33,9 +32,6 @@ import {
   MAX_ENEMIES,
 } from "../constants/gameConfig"
 import { log, logFromWorklet } from "../utils/logger"
-
-const JUMP_ANIM_FRAME_COUNT = 6
-const JUMP_ANIM_TOTAL_MS = CHARACTER_JUMP_ANIM_FRAME_MS * JUMP_ANIM_FRAME_COUNT
 
 // ---------------------------------------------------------------------------
 // useGameLoop
@@ -105,13 +101,6 @@ export function useGameLoop(
       //    GV.globalTime via useDerivedValue to drive the disappearing
       //    platform spritesheet cycle. Reset to 0 by restartRun Step B.
       GV.globalTime.value = frameInfo.timeSinceFirstFrame ?? 0
-
-      if (
-        GV.jumpAnimActive.value &&
-        GV.globalTime.value - GV.jumpAnimStartTime.value >= JUMP_ANIM_TOTAL_MS
-      ) {
-        GV.jumpAnimActive.value = false
-      }
 
       // 4. Input — timeSinceFirstFrame null on frame 0, default to 0.
       //    Frame 0 treated as t=0ms: input suppressed, FIRST FRAME log fires.
@@ -240,8 +229,6 @@ export function useGameLoop(
       )
       if (hit) {
         const vyBeforeBounce = GV.velocityY.value
-        GV.jumpAnimActive.value = true
-        GV.jumpAnimStartTime.value = GV.globalTime.value
         GV.velocityY.value = JUMP_VELOCITY
         logFromWorklet("physics", "platform bounce", {
           px: GV.playerX.value,
@@ -356,8 +343,6 @@ export function useGameLoop(
     GV.touchRight.value = false
     GV.globalTime.value = 0
     GV.isAirborne.value = false
-    GV.jumpAnimActive.value = false
-    GV.jumpAnimStartTime.value = 0
 
     log.info("gameLoop", "restartRun — primitives set", {
       seed: newSeed,

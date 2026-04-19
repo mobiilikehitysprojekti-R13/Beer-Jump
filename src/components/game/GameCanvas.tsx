@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react"
 import { StyleSheet } from "react-native"
 import {
   Canvas,
@@ -11,14 +10,11 @@ import {
   useImage,
 } from "@shopify/react-native-skia"
 import {
-  runOnJS,
   SharedValue,
-  useAnimatedReaction,
   useDerivedValue,
 } from "react-native-reanimated"
 import { Enemy, Platform } from "../../state/types"
 import {
-  CHARACTER_JUMP_ANIM_FRAME_MS,
   CHARACTER_RENDER_CONTACT_OFFSET,
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
@@ -96,9 +92,6 @@ type Props = {
   platforms: SharedValue<Platform[]>
   enemies: SharedValue<Enemy[]>
   globalTime: SharedValue<number>
-  isAirborne: SharedValue<boolean>
-  jumpAnimActive: SharedValue<boolean>
-  jumpAnimStartTime: SharedValue<number>
   backgroundColor: string
   backgroundScene: "plain" | "sunrise"
   characterTextureName: string
@@ -111,86 +104,16 @@ export function GameCanvas({
   platforms,
   enemies,
   globalTime,
-  isAirborne,
-  jumpAnimActive,
-  jumpAnimStartTime,
   backgroundColor,
   backgroundScene,
   characterTextureName,
 }: Props) {
-  const bottleFrame1 = useImage(
+  const bottleImage = useImage(
     require("../../../assets/textures/characters/corona_bottle_1.png"),
   )
-  const bottleFrame2 = useImage(
-    require("../../../assets/textures/characters/corona_bottle_2.png"),
-  )
-  const bottleFrame3 = useImage(
-    require("../../../assets/textures/characters/corona_bottle_3.png"),
-  )
-  const bottleFrame4 = useImage(
-    require("../../../assets/textures/characters/corona_bottle_4.png"),
-  )
-  const bottleFrame5 = useImage(
-    require("../../../assets/textures/characters/corona_bottle_5.png"),
-  )
-  const bottleFrame6 = useImage(
-    require("../../../assets/textures/characters/corona_bottle_6.png"),
-  )
-
-  const [currentBottleFrame, setCurrentBottleFrame] = useState(0)
   const isBottleCharacter =
     characterTextureName === "corona_bottle" ||
     characterTextureName === "beer_bottle"
-
-  useAnimatedReaction(
-    () => {
-      if (!isBottleCharacter) {
-        return 0
-      }
-
-      if (jumpAnimActive.value) {
-        const elapsed = globalTime.value - jumpAnimStartTime.value
-        const frameIndex = Math.min(
-          5,
-          Math.floor(elapsed / CHARACTER_JUMP_ANIM_FRAME_MS),
-        )
-        return frameIndex
-      }
-
-      if (isAirborne.value) {
-        return 5
-      }
-
-      return 0
-    },
-    (nextFrame, prevFrame) => {
-      if (nextFrame !== prevFrame) {
-        runOnJS(setCurrentBottleFrame)(nextFrame)
-      }
-    },
-    [isBottleCharacter],
-  )
-
-  const bottleFrames = useMemo(
-    () => [
-      bottleFrame1,
-      bottleFrame2,
-      bottleFrame3,
-      bottleFrame4,
-      bottleFrame5,
-      bottleFrame6,
-    ],
-    [
-      bottleFrame1,
-      bottleFrame2,
-      bottleFrame3,
-      bottleFrame4,
-      bottleFrame5,
-      bottleFrame6,
-    ],
-  )
-
-  const bottleImage = bottleFrames[currentBottleFrame] ?? bottleFrame1
 
   // -------------------------------------------------------------------------
   // platformPicture — the entire platform scene recorded as a Skia display list.
