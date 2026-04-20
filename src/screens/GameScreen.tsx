@@ -14,9 +14,12 @@ import { SettingsOverlay } from "../components/ui/SettingsOverlay"
 import { ShopOverlay } from "../components/ui/ShopOverlay"
 import { InventoryOverlay } from "../components/ui/InventoryOverlay"
 import { PauseOverlay } from "../components/ui/PauseOverlay"
+import { ThemeBackdrop } from "../components/ui/ThemeBackdrop"
 import { isPaused } from "../state/gameValues"
 import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
+import { useActiveTheme } from "../hooks/useActiveTheme"
+import { COINS_PER_SCORE_UNIT } from "../constants/gameConfig"
 
 // ---------------------------------------------------------------------------
 // Stable Zustand selectors — defined outside the component so their
@@ -33,6 +36,8 @@ const selectSensitivity = (s: ReturnType<typeof useAppStore.getState>) =>
   s.gyroSensitivity
 const selectHasSetName = (s: ReturnType<typeof useAppStore.getState>) =>
   s.hasSetName
+const selectActiveSkin = (s: ReturnType<typeof useAppStore.getState>) =>
+  s.activeSkin
 
 // ---------------------------------------------------------------------------
 // GameScreen
@@ -67,6 +72,8 @@ export default function GameScreen() {
   const personalBest = useAppStore(selectPersonalBest)
   const sensitivity = useAppStore(selectSensitivity)
   const hasSetName = useAppStore(selectHasSetName)
+  const activeSkin = useAppStore(selectActiveSkin)
+  const activeTheme = useActiveTheme()
 
   const [phase, setPhase] = useState<GamePhase>("home")
   const [finalScore, setFinalScore] = useState(0)
@@ -86,6 +93,8 @@ export default function GameScreen() {
   // Stable dep: setPersonalBest is a Zustand action (stable reference).
   const onGameOver = useCallback(
     async (score: number) => {
+      const earnedCoins = Math.max(1, Math.floor(score * COINS_PER_SCORE_UNIT))
+      useAppStore.getState().addCoins(earnedCoins)
       await setPersonalBest(score)
       setFinalScore(score)
       setPhase("gameover")
@@ -144,6 +153,15 @@ export default function GameScreen() {
     setShowPauseOverlay(false)
   }, [])
 
+  const handleQuitToHomeFromPause = useCallback(() => {
+    setShowPauseOverlay(false)
+    setShowSettings(false)
+    setSettingsOpenedFromPause(false)
+    setPhase("home")
+    isPaused.value = true
+    log.info("gameLoop", "quit to home — pause overlay")
+  }, [])
+
   const handleShowSettingsFromHome = useCallback(() => {
     setSettingsOpenedFromPause(false)
     setShowSettings(true)
@@ -183,7 +201,9 @@ export default function GameScreen() {
   }, [])
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: activeTheme.menuBackground }]}>
+      <ThemeBackdrop scene={activeTheme.scene} />
+
       {/* Layer 1 — Skia game canvas (always present) */}
       <GameCanvas
         playerX={playerX}
@@ -192,6 +212,9 @@ export default function GameScreen() {
         platforms={platforms}
         enemies={enemies}
         globalTime={globalTime}
+        backgroundColor={activeTheme.gameBackground}
+        backgroundScene={activeTheme.scene}
+        characterTextureName={activeSkin}
       />
 
       {/* Layer 2 — Touch input zones (always present, zero visual footprint) */}
@@ -212,6 +235,7 @@ export default function GameScreen() {
         visible={showPauseOverlay}
         onResume={handleResume}
         onOpenSettings={handleOpenSettings}
+        onQuit={handleQuitToHomeFromPause}
       />
 
       {/* Layer 4 — Name input overlay (first start only) */}

@@ -1,15 +1,21 @@
 import { StyleSheet } from "react-native"
 import {
   Canvas,
-  Rect,
   Fill,
+  Image as SkiaImage,
   Picture,
+  Rect,
   createPicture,
   Skia,
+  useImage,
 } from "@shopify/react-native-skia"
-import { useDerivedValue, SharedValue } from "react-native-reanimated"
+import {
+  SharedValue,
+  useDerivedValue,
+} from "react-native-reanimated"
 import { Enemy, Platform } from "../../state/types"
 import {
+  CHARACTER_RENDER_CONTACT_OFFSET,
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
   PLATFORM_COLUMNS,
@@ -27,6 +33,8 @@ import {
 // Render geometry computed once at module load.
 // ---------------------------------------------------------------------------
 const RENDER_PLATFORM_WIDTH = SCREEN_WIDTH / PLATFORM_COLUMNS
+const PLAYER_RENDER_WIDTH = PLAYER_WIDTH * 2.4
+const PLAYER_RENDER_HEIGHT = PLAYER_HEIGHT * 4.2
 
 // ---------------------------------------------------------------------------
 // Platform colors hardcoded hex, game world colors.
@@ -84,6 +92,9 @@ type Props = {
   platforms: SharedValue<Platform[]>
   enemies: SharedValue<Enemy[]>
   globalTime: SharedValue<number>
+  backgroundColor: string
+  backgroundScene: "plain" | "sunrise"
+  characterTextureName: string
 }
 
 export function GameCanvas({
@@ -93,7 +104,17 @@ export function GameCanvas({
   platforms,
   enemies,
   globalTime,
+  backgroundColor,
+  backgroundScene,
+  characterTextureName,
 }: Props) {
+  const bottleImage = useImage(
+    require("../../../assets/textures/characters/corona_bottle_1.png"),
+  )
+  const isBottleCharacter =
+    characterTextureName === "corona_bottle" ||
+    characterTextureName === "beer_bottle"
+
   // -------------------------------------------------------------------------
   // platformPicture — the entire platform scene recorded as a Skia display list.
   //
@@ -171,9 +192,6 @@ export function GameCanvas({
     })
   })
 
-  // BeerGuy Y — single derived value, same pattern as original
-  const screenPlayerY = useDerivedValue(() => playerY.value - cameraY.value)
-
   // enemyPicture — all flying enemies in one GPU draw call via Picture.
   // Enemies are 2 column-widths wide and float at row Y with no platform.
   // Visual: dark red body with a 2px highlight on top and bottom edges
@@ -213,10 +231,20 @@ export function GameCanvas({
     })
   })
 
+  const screenPlayerY = useDerivedValue(() => playerY.value - cameraY.value)
+  const screenPlayerHitboxX = useDerivedValue(() => playerX.value)
+  const screenPlayerX = useDerivedValue(() => playerX.value - (PLAYER_RENDER_WIDTH - PLAYER_WIDTH) / 2)
+  const screenPlayerRenderY = useDerivedValue(
+    () =>
+      screenPlayerY.value -
+      (PLAYER_RENDER_HEIGHT - PLAYER_HEIGHT) +
+      CHARACTER_RENDER_CONTACT_OFFSET,
+  )
+
   return (
     <Canvas style={StyleSheet.absoluteFill}>
       {/* Background */}
-      <Fill color='#1a1a2e' />
+      {backgroundScene === "plain" ? <Fill color={backgroundColor} /> : null}
 
       {/* All platforms — one GPU draw call via Picture */}
       <Picture picture={platformPicture} />
@@ -224,14 +252,24 @@ export function GameCanvas({
       {/* All enemies — one GPU draw call via Picture, drawn above platforms */}
       <Picture picture={enemyPicture} />
 
-      {/* BeerGuy — amber rectangle (Phase 3: replace with pixel art sprite) */}
-      <Rect
-        x={playerX}
-        y={screenPlayerY}
-        width={PLAYER_WIDTH}
-        height={PLAYER_HEIGHT}
-        color='#FFA000'
-      />
+      {/* Character */}
+      {isBottleCharacter && bottleImage ? (
+        <SkiaImage
+          image={bottleImage}
+          x={screenPlayerX}
+          y={screenPlayerRenderY}
+          width={PLAYER_RENDER_WIDTH}
+          height={PLAYER_RENDER_HEIGHT}
+        />
+      ) : (
+        <Rect
+          x={screenPlayerHitboxX}
+          y={screenPlayerY}
+          width={PLAYER_WIDTH}
+          height={PLAYER_HEIGHT}
+          color="#ff8c00"
+        />
+      )}
     </Canvas>
   )
 }

@@ -6,6 +6,14 @@ import { GamePhase } from "./types"
 import { touchControlsEnabled } from "./gameValues"
 import { GYRO_SENSITIVITY } from "../constants/gameConfig"
 
+const syncCoinsToFirestore = (coins: number) => {
+  import("../services/firebase/leaderboard")
+    .then(({ updatePlayerCoins }) => updatePlayerCoins(coins))
+    .catch((error) => {
+      console.warn("Failed to sync coins to Firestore:", error)
+    })
+}
+
 // Store type
 type AppStore = {
   // Game phase
@@ -38,12 +46,19 @@ type AppStore = {
 
   // Progression stubs
   coins: number
+  setCoins: (amount: number) => void
+  addCoins: (amount: number) => void
+  spendCoins: (amount: number) => boolean
   xp: number
   playerLevel: number
   ownedSkins: string[]
   ownedThemes: string[]
   activeSkin: string
   activeTheme: string
+  addOwnedSkin: (skinTextureName: string) => void
+  setActiveSkin: (skinTextureName: string) => void
+  addOwnedTheme: (themeTextureName: string) => void
+  setActiveTheme: (themeTextureName: string) => void
 }
 
 // Store
@@ -123,12 +138,13 @@ export const useAppStore = create<AppStore>()(
         console.log("appStore", "loadBestScoreFromFirestore called")
         try {
           // Dynamic import to avoid circular dependency
-          const { getPlayerBestScore } = await import("../services/firebase/leaderboard")
-          const firestoreBest = await getPlayerBestScore()
-          console.log("appStore", "loaded best score from Firestore", { firestoreBest })
-          if (firestoreBest > 0) {
-            set({ personalBest: firestoreBest })
+          const { getPlayerProgress } = await import("../services/firebase/leaderboard")
+          const progress = await getPlayerProgress()
+          console.log("appStore", "loaded progress from Firestore", progress)
+          if (progress.bestScore > 0) {
+            set({ personalBest: progress.bestScore })
           }
+          set({ coins: Math.max(0, Math.floor(progress.coins || 0)) })
         } catch (error) {
           console.warn("Failed to load best score from Firestore:", error)
         }
@@ -136,16 +152,66 @@ export const useAppStore = create<AppStore>()(
 
       // Progression stubs
       coins: 0,
+      setCoins: (amount) =>
+        set(() => {
+          const nextCoins = Math.max(0, Math.floor(amount))
+          syncCoinsToFirestore(nextCoins)
+          return { coins: nextCoins }
+        }),
+      addCoins: (amount) =>
+        set((s) => {
+          const nextCoins = Math.max(0, s.coins + Math.max(0, Math.floor(amount)))
+          syncCoinsToFirestore(nextCoins)
+          return { coins: nextCoins }
+        }),
+      spendCoins: (amount) => {
+        let spent = false
+        set((s) => {
+          const cost = Math.max(0, Math.floor(amount))
+          if (s.coins < cost) {
+            return {}
+          }
+
+          spent = true
+          const nextCoins = s.coins - cost
+          syncCoinsToFirestore(nextCoins)
+          return { coins: nextCoins }
+        })
+        return spent
+      },
       xp: 0,
       playerLevel: 1,
-      ownedSkins: [],
-      ownedThemes: [],
-      activeSkin: "default",
-      activeTheme: "default",
+      ownedSkins: ["default_character"],
+      ownedThemes: ["default_theme"],
+      activeSkin: "default_character",
+      activeTheme: "default_theme",
+      addOwnedSkin: (skinTextureName) =>
+        set((s) => {
+          if (s.ownedSkins.includes(skinTextureName)) {
+            return {}
+          }
+
+          return { ownedSkins: [...s.ownedSkins, skinTextureName] }
+        }),
+      setActiveSkin: (skinTextureName) => set({ activeSkin: skinTextureName }),
+      addOwnedTheme: (themeTextureName) =>
+        set((s) => {
+          if (s.ownedThemes.includes(themeTextureName)) {
+            return {}
+          }
+
+          return { ownedThemes: [...s.ownedThemes, themeTextureName] }
+        }),
+      setActiveTheme: (themeTextureName) => set({ activeTheme: themeTextureName }),
     }),
     {
       name: "beer-jump-app-state",
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          touchControlsEnabled.value = state.touchControlsEnabled
+        }
+      },
       // Only persist values that should survive app restarts.
       // gamePhase, auth, and progression stubs are excluded —
       // they are either transient (gamePhase) or not yet wired (auth/progression).
@@ -155,8 +221,13 @@ export const useAppStore = create<AppStore>()(
         touchControlsEnabled: s.touchControlsEnabled,
         gyroEnabled: s.gyroEnabled,
         gyroSensitivity: s.gyroSensitivity,
+        coins: s.coins,
         hasSetName: s.hasSetName,
         playerName: s.playerName,
+        ownedSkins: s.ownedSkins,
+        activeSkin: s.activeSkin,
+        ownedThemes: s.ownedThemes,
+        activeTheme: s.activeTheme,
       }),
     },
   ),
