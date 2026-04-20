@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useAppStore } from "../../state/appStore"
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native"
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useAppStore } from "../../state/appStore"
 import { useActiveTheme } from '../../hooks/useActiveTheme'
 import { ThemeBackdrop } from './ThemeBackdrop'
 
@@ -69,8 +68,6 @@ export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowS
       <TouchableOpacity style={[styles.button, { backgroundColor: activeTheme.buttonBackground }]} onPress={onShowInventory}>
         <Text style={[styles.buttonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>Inventory</Text>
       </TouchableOpacity>
-
-
     </View>
   )
 }

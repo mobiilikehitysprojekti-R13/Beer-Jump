@@ -180,31 +180,32 @@ export function ShopOverlay({ visible, onClose }: Props) {
               const owned = ownedItemKeys.includes(toOwnedKey(item))
               const previewSource = getTexturePreviewSource(item.textureName)
               return (
-              <TouchableOpacity key={item.id} style={[styles.itemRow, { backgroundColor: activeTheme.cardBackground, borderColor: activeTheme.cardBorder, borderWidth: 1 }]} onPress={() => handleBuy(item)}>
-                <View style={styles.itemHeader}>
-                  <View style={styles.itemHeaderRow}>
-                    {previewSource ? (
-                      <Image source={previewSource} style={styles.previewImage} resizeMode='cover' />
-                    ) : (
-                      <View style={styles.previewPlaceholder} />
-                    )}
-                    <Text style={[styles.itemText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>{item.itemName}</Text>
+                <TouchableOpacity key={item.id} style={[styles.itemRow, { backgroundColor: activeTheme.cardBackground, borderColor: activeTheme.cardBorder, borderWidth: 1 }]} onPress={() => handleBuy(item)}>
+                  <View style={styles.itemHeader}>
+                    <View style={styles.itemHeaderRow}>
+                      {previewSource ? (
+                        <Image source={previewSource} style={styles.previewImage} resizeMode='cover' />
+                      ) : (
+                        <View style={styles.previewPlaceholder} />
+                      )}
+                      <Text style={[styles.itemText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>{item.itemName}</Text>
+                    </View>
+                    <View style={styles.priceRow}>
+                      <MaterialCommunityIcons name='cash-multiple' size={16} color='#FFD54F' />
+                      <Text style={[styles.priceText, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>{item.price}</Text>
+                    </View>
                   </View>
-                  <View style={styles.priceRow}>
-                    <MaterialCommunityIcons name='cash-multiple' size={16} color='#FFD54F' />
-                    <Text style={[styles.priceText, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>{item.price}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.subText, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>{item.textureName}</Text>
-                <TouchableOpacity
-                  style={[styles.buyButton, { backgroundColor: activeTheme.buttonBackground }, owned && styles.ownedButton]}
-                  disabled={owned}
-                  onPress={() => handleBuy(item)}
-                >
-                  <Text style={[styles.buyButtonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>{owned ? 'Owned' : 'Buy'}</Text>
+                  <Text style={[styles.subText, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>{item.textureName}</Text>
+                  <TouchableOpacity
+                    style={[styles.buyButton, { backgroundColor: activeTheme.buttonBackground }, owned && styles.ownedButton]}
+                    disabled={owned}
+                    onPress={() => handleBuy(item)}
+                  >
+                    <Text style={[styles.buyButtonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>{owned ? 'Owned' : 'Buy'}</Text>
+                  </TouchableOpacity>
                 </TouchableOpacity>
-              </TouchableOpacity>
-            )})
+              )
+            })
           )}
 
           <View style={styles.sectionHeader}>
@@ -219,39 +220,40 @@ export function ShopOverlay({ visible, onClose }: Props) {
               const unsupportedTheme = !isKnownTheme(item.textureName)
               const previewSource = getTexturePreviewSource(item.textureName)
               return (
-              <TouchableOpacity key={item.id} style={[styles.itemRow, { backgroundColor: activeTheme.cardBackground, borderColor: activeTheme.cardBorder, borderWidth: 1 }]} onPress={() => handleBuy(item)}>
-                <View style={styles.itemHeader}>
-                  <View style={styles.itemHeaderRow}>
-                    {previewSource ? (
-                      <Image source={previewSource} style={styles.previewImage} resizeMode='cover' />
-                    ) : (
-                      <View style={styles.previewPlaceholder} />
-                    )}
-                    <Text style={[styles.itemText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>{item.itemName}</Text>
+                <TouchableOpacity key={item.id} style={[styles.itemRow, { backgroundColor: activeTheme.cardBackground, borderColor: activeTheme.cardBorder, borderWidth: 1 }]} onPress={() => handleBuy(item)}>
+                  <View style={styles.itemHeader}>
+                    <View style={styles.itemHeaderRow}>
+                      {previewSource ? (
+                        <Image source={previewSource} style={styles.previewImage} resizeMode='cover' />
+                      ) : (
+                        <View style={styles.previewPlaceholder} />
+                      )}
+                      <Text style={[styles.itemText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>{item.itemName}</Text>
+                    </View>
+                    <View style={styles.priceRow}>
+                      <MaterialCommunityIcons name='cash-multiple' size={16} color='#FFD54F' />
+                      <Text style={[styles.priceText, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>{item.price}</Text>
+                    </View>
                   </View>
-                  <View style={styles.priceRow}>
-                    <MaterialCommunityIcons name='cash-multiple' size={16} color='#FFD54F' />
-                    <Text style={[styles.priceText, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>{item.price}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.subText, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>{item.textureName}</Text>
-                {unsupportedTheme && (
-                  <Text style={[styles.warningText, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>Theme key not configured in app yet.</Text>
-                )}
-                <TouchableOpacity
-                  style={[styles.buyButton, { backgroundColor: activeTheme.buttonBackground }, owned && styles.ownedButton]}
-                  disabled={owned}
-                  onPress={() => handleBuy(item)}
-                >
-                  <Text style={[styles.buyButtonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>{owned ? 'Owned' : 'Buy'}</Text>
+                  <Text style={[styles.subText, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>{item.textureName}</Text>
+                  {unsupportedTheme && (
+                    <Text style={styles.warningText}>Not available in this build</Text>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.buyButton, { backgroundColor: activeTheme.buttonBackground }, owned && styles.ownedButton]}
+                    disabled={owned}
+                    onPress={() => handleBuy(item)}
+                  >
+                    <Text style={[styles.buyButtonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>{owned ? 'Owned' : 'Buy'}</Text>
+                  </TouchableOpacity>
                 </TouchableOpacity>
-              </TouchableOpacity>
-            )})
+              )
+            })
           )}
 
           <View style={[styles.coinPackCard, { backgroundColor: activeTheme.cardBackground, borderColor: activeTheme.cardBorder }]}>
-            <Text style={[styles.coinPackTitle, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>Coin Packs (Free)</Text>
-            <Text style={[styles.coinPackSubtitle, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>Pick a pack to add coins instantly.</Text>
+            <Text style={[styles.coinPackTitle, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>Get Coins</Text>
+            <Text style={[styles.coinPackSubtitle, { color: activeTheme.mutedTextColor, fontFamily: activeTheme.fontFamily }]}>Add coins to your wallet</Text>
             <View style={styles.coinPackRow}>
               <TouchableOpacity
                 style={[styles.coinPackButton, { backgroundColor: activeTheme.buttonBackground }]}
