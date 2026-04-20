@@ -51,12 +51,13 @@ import { useAppStore } from "../state/appStore"
 //   remain fully functional.
 // ---------------------------------------------------------------------------
 export function useTiltInput() {
+  const gyroEnabled = useAppStore((s) => s.gyroEnabled)
+
   useEffect(() => {
     let sub: ReturnType<typeof Accelerometer.addListener> | null = null
 
-    const gyroEnabled = useAppStore.getState().gyroEnabled
-
     if (!gyroEnabled) {
+      gyroX.value = 0
       console.log("useTiltInput", "gyro disabled in settings, skipping accelerometer listener")
       return
     }
@@ -78,5 +79,5 @@ export function useTiltInput() {
     return () => {
       sub?.remove()
     }
-  }, [])
+  }, [gyroEnabled])
 }

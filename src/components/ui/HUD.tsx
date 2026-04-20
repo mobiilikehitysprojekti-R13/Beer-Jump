@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { StyleSheet, TouchableOpacity, Text, View } from "react-native"
-import { MaterialCommunityIcons } from "@expo/vector-icons"
 import {
   useAnimatedReaction,
   runOnJS,
   SharedValue,
 } from "react-native-reanimated"
+import { useActiveTheme } from "../../hooks/useActiveTheme"
 
 // HUD
 // Displays the live score and a pause button during play.
@@ -32,6 +32,7 @@ type Props = {
 export function HUD({ score, isPaused, onPause, onResume }: Props) {
   const [displayScore, setDisplayScore] = useState(0)
   const [displayPaused, setDisplayPaused] = useState(false)
+  const activeTheme = useActiveTheme()
 
   useAnimatedReaction(
     () => score.value,
@@ -55,10 +56,16 @@ export function HUD({ score, isPaused, onPause, onResume }: Props) {
     <View style={styles.container} pointerEvents='box-none'>
       {/* Top bar — always visible */}
       <View style={styles.topBar}>
-        <Text style={styles.scoreText}>Score: {displayScore}</Text>
+        <Text style={[styles.scoreText, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>Score: {displayScore}</Text>
         {!displayPaused && (
-          <TouchableOpacity onPress={onPause} style={styles.pauseButton}>
-            <MaterialCommunityIcons name='pause-circle-outline' size={30} color='#FFFFFF' />
+          <TouchableOpacity
+            onPress={onPause}
+            style={[styles.pauseButton, { borderColor: activeTheme.textColor }]}
+          >
+            <View style={styles.pauseGlyph}>
+              <View style={[styles.pauseBar, { backgroundColor: activeTheme.textColor }]} />
+              <View style={[styles.pauseBar, { backgroundColor: activeTheme.textColor }]} />
+            </View>
           </TouchableOpacity>
         )}
       </View>
@@ -88,7 +95,24 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   pauseButton: {
-    padding: 8,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  pauseGlyph: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  pauseBar: {
+    width: 5,
+    height: 18,
+    borderRadius: 2,
   },
 
   // Pause overlay — sits above everything, semi-transparent dark fill

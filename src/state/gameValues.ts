@@ -92,6 +92,16 @@ export const enemies = makeMutable<Enemy[]>(createEnemyPool())
 export const globalTime = makeMutable(0)
 
 // ---------------------------------------------------------------------------
+// Character animation state
+// isAirborne        — true while player vertical velocity is non-zero.
+// jumpAnimActive    — true during one-shot jump animation playback (frames 1-6).
+// jumpAnimStartTime — globalTime timestamp when jump animation started.
+// ---------------------------------------------------------------------------
+export const isAirborne = makeMutable(false)
+export const jumpAnimActive = makeMutable(false)
+export const jumpAnimStartTime = makeMutable(0)
+
+// ---------------------------------------------------------------------------
 // Game control flags
 // These are the shared values written from the JS thread:
 //   isPaused       — HUD pause button / AppState background listener

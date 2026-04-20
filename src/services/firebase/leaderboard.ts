@@ -1,4 +1,6 @@
 import { Timestamp, collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore'
+import { Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getUser } from './auth'
 import { getDocument, setDocument, updateDocument } from './firestore'
 import { db } from './config'
@@ -19,6 +21,19 @@ export type LeaderboardEntry = {
 }
 
 const COLLECTION = 'leaderboard'
+const GUEST_COLLECTION = 'guestProgress'
+const GUEST_ID_KEY = 'beer-jump-guest-id'
+
+const getGuestId = async (): Promise<string> => {
+  const existing = await AsyncStorage.getItem(GUEST_ID_KEY)
+  if (existing) {
+    return existing
+  }
+
+  const generated = `guest_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`
+  await AsyncStorage.setItem(GUEST_ID_KEY, generated)
+  return generated
+}
 
 // -------------------------
 // Submit a score
@@ -94,6 +109,97 @@ export const getPlayerBestScore = async (): Promise<number> => {
   }
 
   return 0
+}
+
+export const getPlayerProgress = async (): Promise<{ bestScore: number; coins: number }> => {
+  const user = getUser()
+  if (!user) {
+    try {
+      const guestId = await getGuestId()
+      const guestProgress = await getDocument(GUEST_COLLECTION, guestId)
+      if (guestProgress) {
+        return {
+          bestScore: guestProgress.bestScore || 0,
+          coins: guestProgress.coins || 0,
+        }
+      }
+    } catch (error) {
+      log.warn("firebase", "getPlayerProgress: failed to load guest progress", { error: String(error) })
+    }
+
+    return { bestScore: 0, coins: 0 }
+  }
+
+  try {
+    const docRef = doc(db, COLLECTION, user.uid)
+    const docSnap = await getDoc(docRef)
+
+    if (docSnap.exists()) {
+      const data = docSnap.data() as LeaderboardEntry
+      return {
+        bestScore: data.score || 0,
+        coins: data.coins || 0,
+      }
+    }
+  } catch (error) {
+    log.warn("firebase", "getPlayerProgress: network error or offline", { error: String(error) })
+  }
+
+  return { bestScore: 0, coins: 0 }
+}
+
+export const updatePlayerCoins = async (coins: number): Promise<void> => {
+  const user = getUser()
+  const safeCoins = Math.max(0, Math.floor(coins))
+
+  if (!user) {
+    try {
+      const guestId = await getGuestId()
+      const existingGuest = await getDocument(GUEST_COLLECTION, guestId)
+      const payload = {
+        coins: safeCoins,
+        bestScore: existingGuest?.bestScore || 0,
+        timestamp: Timestamp.now(),
+      }
+
+      if (!existingGuest) {
+        await setDocument(GUEST_COLLECTION, guestId, payload)
+      } else {
+        await updateDocument(GUEST_COLLECTION, guestId, payload)
+      }
+    } catch (error) {
+      log.warn("firebase", "updatePlayerCoins: failed guest coin sync", { error: String(error) })
+    }
+    return
+  }
+
+  try {
+    const existing = await getDocument(COLLECTION, user.uid)
+    const payload = {
+      coins: safeCoins,
+      timestamp: Timestamp.now(),
+    }
+
+    if (!existing) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useAppStore } = require("../../state/appStore")
+      const playerName = useAppStore.getState().playerName
+
+      await setDocument(COLLECTION, user.uid, {
+        playerName,
+        score: 0,
+        level: 1,
+        xp: 0,
+        platform: Platform.OS as 'ios' | 'android',
+        ...payload,
+      })
+      return
+    }
+
+    await updateDocument(COLLECTION, user.uid, payload)
+  } catch (error) {
+    log.warn("firebase", "updatePlayerCoins: network error or offline", { error: String(error) })
+  }
 }
 
 // -------------------------

@@ -191,6 +191,43 @@ export function checkPlatformCollision(
 }
 
 // ---------------------------------------------------------------------------
+// willLikelyLandSoon
+// Predicts whether the player will cross a collidable platform top within
+// lookAheadMs while descending. Pure check only: no platform mutation.
+// ---------------------------------------------------------------------------
+export function willLikelyLandSoon(
+  px: number,
+  py: number,
+  velocityY: number,
+  platforms: Platform[],
+  lookAheadMs: number,
+): boolean {
+  "worklet"
+  if (velocityY <= 0 || lookAheadMs <= 0) return false
+
+  const feetY = py + PLAYER_HEIGHT
+  const projectedFeetY = feetY + velocityY * lookAheadMs
+  if (projectedFeetY < feetY) return false
+
+  for (let i = 0; i < platforms.length; i++) {
+    const p = platforms[i]
+    if (!p.active) continue
+    if (p.type === "fake") continue
+    if (p.type === "breakable" && p.crumbling) continue
+
+    if (px + PLAYER_WIDTH <= p.x || px >= p.x + COLLISION_PLATFORM_WIDTH) {
+      continue
+    }
+
+    if (feetY <= p.y && projectedFeetY >= p.y) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// ---------------------------------------------------------------------------
 // wrapHorizontal
 // Wraps BeerGuy from one side of the screen to the other when he exits the
 // horizontal bounds. Mirrors Doodle Jump's screen-wrap mechanic.

@@ -244,6 +244,9 @@ export function useGameLoop(
         })
       }
 
+      GV.isAirborne.value =
+        GV.velocityY.value > 0.01 || GV.velocityY.value < -0.01
+
       // 9. Camera — advance when player enters upper 40% of visible screen
       const scrollThreshold = GV.playerY.value - SCREEN_HEIGHT * 0.4
       if (scrollThreshold < GV.cameraY.value) {
@@ -343,6 +346,7 @@ export function useGameLoop(
     GV.touchLeft.value = false
     GV.touchRight.value = false
     GV.globalTime.value = 0
+    GV.isAirborne.value = false
 
     log.info("gameLoop", "restartRun — primitives set", {
       seed: newSeed,
@@ -404,6 +408,9 @@ export function useGameLoop(
     enemies: GV.enemies,
     score: GV.score,
     globalTime: GV.globalTime,
+    isAirborne: GV.isAirborne,
+    jumpAnimActive: GV.jumpAnimActive,
+    jumpAnimStartTime: GV.jumpAnimStartTime,
     restartRun,
   }
 }

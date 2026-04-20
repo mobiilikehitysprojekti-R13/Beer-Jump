@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { usePlayClick } from '../../hooks/usePlayClick'
 import { StyleSheet, View, Text, TouchableOpacity, TextInput } from "react-native"
-import { useAppStore } from "../../state/appStore"
+import { useActiveTheme } from '../../hooks/useActiveTheme'
+import { ThemeBackdrop } from './ThemeBackdrop'
 
 // NameInputOverlay
 // Renders the name input UI as a full-screen View overlay inside
@@ -30,6 +31,7 @@ export function NameInputOverlay({
 }: Props) {
   const playClick = usePlayClick()
   const [name, setName] = useState(initialName)
+  const activeTheme = useActiveTheme()
 
   useEffect(() => {
     setName(initialName)
@@ -43,24 +45,25 @@ export function NameInputOverlay({
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+    <View style={[styles.container, { backgroundColor: activeTheme.menuBackground }]}>
+      <ThemeBackdrop scene={activeTheme.scene} />
+      <Text style={[styles.title, { color: activeTheme.titleColor, fontFamily: activeTheme.fontFamily }]}>{title}</Text>
+      <Text style={[styles.subtitle, { color: activeTheme.textColor, fontFamily: activeTheme.fontFamily }]}>{subtitle}</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { backgroundColor: activeTheme.inputBackground, color: activeTheme.textColor, borderColor: activeTheme.cardBorder, fontFamily: activeTheme.fontFamily }]}
         value={name}
         onChangeText={setName}
         placeholder="Player Name"
-        placeholderTextColor="#FFFFFF80"
+        placeholderTextColor={activeTheme.mutedTextColor}
         maxLength={20}
         autoFocus
       />
       <TouchableOpacity
-        style={[styles.button, !name.trim() && styles.buttonDisabled]}
+        style={[styles.button, { backgroundColor: activeTheme.buttonBackground }, !name.trim() && styles.buttonDisabled]}
         onPress={handleSubmit}
         disabled={!name.trim()}
       >
-        <Text style={styles.buttonText}>{buttonText}</Text>
+        <Text style={[styles.buttonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>{buttonText}</Text>
       </TouchableOpacity>
     </View>
   )

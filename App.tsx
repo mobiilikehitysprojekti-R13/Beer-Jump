@@ -73,9 +73,9 @@ export default function App() {
         // Step 2: sign in anonymously if no session, write UID to Zustand.
         await initAuth()
 
-        log.info("app", "auth bootstrap: loading best score from Firestore")
+        log.info("app", "auth bootstrap: loading best score and coins from Firestore")
 
-        // Step 3: load best score from Firestore
+        // Step 3: load player progress from Firestore
         await useAppStore.getState().loadBestScoreFromFirestore()
 
         log.info("app", "auth bootstrap: ensuring default inventory items")
