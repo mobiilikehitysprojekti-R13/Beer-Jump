@@ -114,6 +114,8 @@ export default function GameScreen() {
     cameraY,
     platforms,
     enemies,
+    powerUps,
+    activePowerUpState,
     score,
     globalTime,
     restartRun,
@@ -222,6 +224,8 @@ export default function GameScreen() {
         cameraY={cameraY}
         platforms={platforms}
         enemies={enemies}
+        powerUps={powerUps}
+        activePowerUpState={activePowerUpState}
         globalTime={globalTime}
         backgroundColor={activeTheme.gameBackground}
         backgroundScene={activeTheme.scene}
@@ -236,6 +240,7 @@ export default function GameScreen() {
         <HUD
           score={score}
           isPaused={isPaused}
+          activePowerUpState={activePowerUpState}
           onPause={handlePause}
           onResume={handleResume}
         />
