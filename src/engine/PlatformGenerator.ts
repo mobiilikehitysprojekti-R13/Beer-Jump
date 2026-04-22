@@ -1,4 +1,4 @@
-import { Enemy, Platform, PlatformType, DifficultyConfig } from "../state/types"
+import { Enemy, Platform, PlatformType, DifficultyConfig,ActivePowerUpState, PowerUp, PowerUpType } from "../state/types"
 import {
   PLATFORM_POOL_SIZE,
   PLATFORM_HEIGHT,
@@ -11,6 +11,11 @@ import {
   MAX_ENEMIES,
   ENEMY_BASE_SPEED,
   ENEMY_HEIGHT,
+  MAX_POWER_UPS_ON_SCREEN,
+  POWER_UP_WIDTH,
+  POWER_UP_HEIGHT,
+  POWER_UP_PLATFORM_OFFSET,
+  POWER_UP_SPAWN_PROB,
 } from "../constants/gameConfig"
 import { getDifficultyConfig } from "./DifficultyScaler"
 
@@ -103,6 +108,33 @@ function pickType(
 }
 
 // ---------------------------------------------------------------------------
+// pickPowerUpType
+// Selects a power-up type using one LCG step against the weight table.
+// Returns [nextSeed, powerUpType].
+//
+// Cumulative thresholds derived from POWER_UP_TYPE_WEIGHTS in gameConfig.ts:
+//   pretzelBoots: 0.50             → rand < 0.50
+//   foamHat:      0.25 cumul 0.75  → rand < 0.75
+//   jetpack:      0.15 cumul 0.90  → rand < 0.90
+//   bottleRocket: 0.10 cumul 1.00  → fallthrough
+//
+// The thresholds are hardcoded here because POWER_UP_TYPE_WEIGHTS is a plain
+// JS object and object property access inside a worklet from a non-worklet
+// constant is unreliable. If you change POWER_UP_TYPE_WEIGHTS in gameConfig.ts,
+// update the thresholds here to match.
+// ---------------------------------------------------------------------------
+function pickPowerUpType(s: number): [number, PowerUpType] {
+  "worklet"
+  let rand: number
+  ;[s, rand] = lcgNext(s)
+
+  if (rand < 0.5) return [s, "pretzelBoots"]
+  if (rand < 0.75) return [s, "foamHat"]
+  if (rand < 0.9) return [s, "jetpack"]
+  return [s, "bottleRocket"]
+}
+
+// ---------------------------------------------------------------------------
 // setPlatform
 // Writes all fields of a Platform object in place, then applies type-specific
 // field overrides. Always resets crumbling/crumbleTimer so recycled breakable
@@ -142,11 +174,11 @@ function setPlatform(
     // Patrol one column left and one column right of spawn position,
     // clamped so the platform never leaves the screen.
     const patrolLeft = x - cw
-    const patrolRight = x + cw * 2 // +2 because platform itself is 1 cw wide
+    const patrolRight = x + cw * 2
     p.moveBoundaryLeft = patrolLeft < 0 ? 0 : patrolLeft
     p.moveBoundaryRight =
       patrolRight > SCREEN_WIDTH ? SCREEN_WIDTH : patrolRight
-    p.moveSpeed = 0.12 // units/ms — tunable, roughly half of player walk speed
+    p.moveSpeed = 0.12
     p.moveDirection = 1
   }
   // disappearing: no per-instance fields — animation driven by GV.globalTime
@@ -205,18 +237,7 @@ export function createPlatformPool(): Platform[] {
 // ---------------------------------------------------------------------------
 // safeRowTypes
 // Ensures a row's type array never leaves the player with zero landable
-// platforms. Called after pickType() assigns all slots in a row.
-//
-// Rule: if every slot in the row is "fake", force the first slot to "static".
-// A single fake platform per row is intentional game design — the player can
-// jump over it. An all-fake row is an unwinnable gap: the player has no
-// platform to land on regardless of horizontal position.
-//
-// When PLATFORMS_PER_ROW = 1 (NORMAL mode), this never triggers because a
-// single "fake" is always one slot, not "all slots". The guard is only
-// meaningful at PLATFORMS_PER_ROW ≥ 2.
-//
-// types[] is mutated in place — avoids allocation inside a worklet.
+// platforms. If every slot is "fake", force the first slot to "static".
 // ---------------------------------------------------------------------------
 function safeRowTypes(types: PlatformType[]): void {
   "worklet"
@@ -310,6 +331,90 @@ function setMovingPlatformGroup(
   }
 }
 
+// ---------------------------------------------------------------------------
+// trySpawnPowerUp
+//
+// Attempts to place a power-up item on a platform in the current row.
+// Called only after a non-enemy platform row has been placed and only when
+// the row is not all-moving (moving platforms cannot hold power-ups).
+//
+// Spawn rules:
+//   • Roll one LCG check against the tier's spawn probability.
+//   • If the roll passes, pick a random eligible platform in the row
+//     (any type except "fake" — fake platforms are not collidable so the
+//     player cannot reliably land to "collect" the item visually).
+//   • Find an inactive power-up pool slot and write into it.
+//   • Position: centered horizontally on the chosen platform, sitting on
+//     top of it (y = platformY - POWER_UP_HEIGHT - POWER_UP_PLATFORM_OFFSET).
+//
+// Mutates s (LCG seed) in place via the returned value.
+// Returns the updated seed. Only one power-up per row maximum.
+// ---------------------------------------------------------------------------
+function trySpawnPowerUp(
+  s: number,
+  platforms: Platform[],
+  rowPoolOffset: number,
+  rowPlatformCount: number,
+  rowTypes: PlatformType[],
+  powerUpPool: PowerUp[],
+  tierIndex: number,
+): number {
+  "worklet"
+  const spawnProb = POWER_UP_SPAWN_PROB[tierIndex] ?? 0.04
+  let spawnRand: number
+  ;[s, spawnRand] = lcgNext(s)
+
+  if (spawnRand >= spawnProb) return s // no spawn this row
+
+  // Find an eligible platform in this row (not fake) to host the power-up
+  // Pick a random eligible slot rather than always using the first one
+  let eligibleCount = 0
+  for (let offset = 0; offset < rowPlatformCount; offset++) {
+    if (rowTypes[offset] !== "fake") eligibleCount++
+  }
+  if (eligibleCount === 0) return s // all fake row — no host available
+
+  let pickRand: number
+  ;[s, pickRand] = lcgNext(s)
+  const pickIndex = Math.floor(pickRand * eligibleCount)
+
+  let found = 0
+  let chosenOffset = 0
+  for (let offset = 0; offset < rowPlatformCount; offset++) {
+    if (rowTypes[offset] !== "fake") {
+      if (found === pickIndex) {
+        chosenOffset = offset
+        break
+      }
+      found++
+    }
+  }
+
+  const hostPlatform = platforms[rowPoolOffset + chosenOffset]
+
+  // Find an inactive power-up pool slot
+  for (let e = 0; e < MAX_POWER_UPS_ON_SCREEN; e++) {
+    if (!powerUpPool[e].active) {
+      let puType: PowerUpType
+      ;[s, puType] = pickPowerUpType(s)
+
+      const cw = colWidth()
+      // Center the power-up horizontally on its host platform
+      const puX = hostPlatform.x + (cw - POWER_UP_WIDTH) / 2
+      // Sit on top of the platform with a small offset gap
+      const puY = hostPlatform.y - POWER_UP_HEIGHT - POWER_UP_PLATFORM_OFFSET
+
+      powerUpPool[e].x = puX
+      powerUpPool[e].y = puY
+      powerUpPool[e].type = puType
+      powerUpPool[e].active = true
+      break
+    }
+  }
+
+  return s
+}
+
 export function resetPlatforms(pool: Platform[], seed: number): void {
   "worklet"
   let s = seed
@@ -340,11 +445,9 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
     fake: 0.02,
   }
 
-  // Reusable type buffer — sized to max group size (PLATFORMS_PER_ROW = 3).
-  const rowTypes: PlatformType[] = Array.from(
-    { length: PLATFORMS_PER_ROW },
-    () => "static" as PlatformType,
-  )
+  // Reusable type buffer — filled with a loop (no Array.from closure)
+  const rowTypes: PlatformType[] = []
+  for (let i = 0; i < PLATFORMS_PER_ROW; i++) rowTypes[i] = "static"
 
   let poolIndex = FLOOR_PLATFORMS
   while (poolIndex + PLATFORMS_PER_ROW <= PLATFORM_POOL_SIZE) {
@@ -370,7 +473,7 @@ export function resetPlatforms(pool: Platform[], seed: number): void {
 
     // Fill active platforms for this row's group
     // All-moving rows use coordinated group patrol; mixed rows use individual setPlatform
-    let rowIsAllMoving = rowTypes[0] === "moving"
+    const rowIsAllMoving = rowTypes[0] === "moving"
     if (rowIsAllMoving) {
       setMovingPlatformGroup(
         pool,
@@ -437,18 +540,19 @@ const ENEMY_SPAWN_PROB = [0, 0.15, 0.22, 0.28, 0.35]
 export function recyclePlatforms(
   platforms: Platform[],
   enemyPool: Enemy[],
+  powerUpPool: PowerUp[],
   cameraY: number,
   rngState: number[],
 ): void {
   "worklet"
   const offscreenThreshold = cameraY + SCREEN_HEIGHT * 1.5
 
-  // Find the highest platform Y (smallest world-Y).
-  // Includes inactive platforms so deactivated breakables don't cause
-  // new rows to spawn at a stale high-water mark.
+  // Find the highest active platform Y (smallest world-Y).
+  // Only active platforms are included so deactivated breakables don't skew
+  // the high-water mark and cause new rows to appear far above the live zone.
   let minY = cameraY
   for (let i = 0; i < platforms.length; i++) {
-    if (platforms[i].y < minY) {
+    if (platforms[i].active && platforms[i].y < minY) {
       minY = platforms[i].y
     }
   }
@@ -466,33 +570,40 @@ export function recyclePlatforms(
   // Trailing slots in the stride are deactivated.
   const stride = PLATFORMS_PER_ROW
 
-  // Reusable type buffer — sized to max stride (PLATFORMS_PER_ROW = 3).
-  const rowTypes: PlatformType[] = Array.from(
-    { length: stride },
-    () => "static" as PlatformType,
-  )
+  // Reusable type buffer — filled with a loop (no Array.from closure)
+  const rowTypes: PlatformType[] = []
+  for (let i = 0; i < stride; i++) rowTypes[i] = "static"
+
+  // Deactivate power-ups that have scrolled off screen (unconditional outer check)
+  for (let e = 0; e < MAX_POWER_UPS_ON_SCREEN; e++) {
+    if (powerUpPool[e].active && powerUpPool[e].y > offscreenThreshold) {
+      powerUpPool[e].active = false
+      powerUpPool[e].y = -9999
+    }
+  }
+
+  // Deactivate enemies that have scrolled off screen (unconditional — not
+  // inside the platform loop so they are cleaned up even when no rows recycle)
+  for (let e = 0; e < MAX_ENEMIES; e++) {
+    if (enemyPool[e].active && enemyPool[e].y > offscreenThreshold) {
+      enemyPool[e].active = false
+      enemyPool[e].alive = false
+    }
+  }
 
   for (let i = 0; i + stride <= platforms.length; i += stride) {
     // Use world-Y of the first slot in the group regardless of active state
     if (platforms[i].y > offscreenThreshold) {
       // Resolve difficulty config for this row
       const config = getDifficultyConfig(rowsGenerated)
-      const step = config.platformsPerRow // runtime group width (1, 2, or 3)
+      const step = config.platformsPerRow
 
       let startCol: number
       ;[s, rand, startCol] = nextStartColumn(s, prevStartCol, step)
 
       const newY = minY - PLATFORM_ROW_HEIGHT
 
-      // --- Decide: flying enemy row OR platform row ---
-      //
-      // Enemy rows and platform rows are mutually exclusive. If a flying enemy
-      // spawns on this row, all platform slots in the stride are deactivated.
-      // The enemy floats at the row's Y position with no platform beneath it.
-      //
-      // Roll for enemy spawn first so the platform path is skipped entirely
-      // when an enemy takes the row. This also means the LCG stays in sync
-      // regardless of which branch runs (one lcgNext call either way).
+      // Enemy row or platform row
       let enemySpawnedThisRow = false
 
       if (config.enemiesEnabled) {
@@ -524,7 +635,7 @@ export function recyclePlatforms(
                   : enemyX + enemyWidth + cw
 
               enemy.x = enemyX
-              enemy.y = newY // floats at row Y — no platform beneath
+              enemy.y = newY
               enemy.width = enemyWidth
               enemy.height = ENEMY_HEIGHT
               enemy.patrolLeft = patrolLeft
@@ -541,14 +652,14 @@ export function recyclePlatforms(
       }
 
       if (enemySpawnedThisRow) {
-        // Deactivate all platform slots in this stride — the flying enemy owns the row
+        // Deactivate all platform slots — the flying enemy owns this row.
+        // No power-up spawns on enemy rows.
         for (let offset = 0; offset < stride; offset++) {
           platforms[i + offset].active = false
           platforms[i + offset].y = -9999
         }
       } else {
-        // No enemy — place platforms normally
-        // Pick types for the active group width
+        // No enemy — place platforms
         for (let offset = 0; offset < step; offset++) {
           let type: PlatformType
           ;[s, type] = pickType(s, config.typeProbabilities)
@@ -570,18 +681,29 @@ export function recyclePlatforms(
             )
           }
         }
-        // Deactivate trailing slots in the stride (when step < stride)
+        // Deactivate trailing slots
         for (let offset = step; offset < stride; offset++) {
           platforms[i + offset].active = false
           platforms[i + offset].y = -9999
         }
-      }
 
-      // Deactivate enemies that have scrolled off screen
-      for (let e = 0; e < MAX_ENEMIES; e++) {
-        if (enemyPool[e].active && enemyPool[e].y > offscreenThreshold) {
-          enemyPool[e].active = false
-          enemyPool[e].alive = false
+        // Power-up spawn
+        // Only on non-moving rows. Moving platforms cannot hold power-ups
+        // because the item would need to track the platform's x each frame
+        // (the item has no physics tick). Fake-only rows are also excluded
+        // (safeRowTypes guarantees at least one non-fake, but rowIsAllMoving
+        // false still allows mixed rows that have some fakes — trySpawnPowerUp
+        // handles that internally by skipping fake-hosted slots).
+        if (!rowIsAllMoving) {
+          s = trySpawnPowerUp(
+            s,
+            platforms,
+            i,
+            step,
+            rowTypes,
+            powerUpPool,
+            config.tier - 1, // tier is 1-based, POWER_UP_SPAWN_PROB is 0-based
+          )
         }
       }
 
