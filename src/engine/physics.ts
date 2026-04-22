@@ -12,8 +12,11 @@ import {
   SCREEN_WIDTH,
   CRUMBLE_DELAY_MS,
   MAX_ENEMIES,
+  MAX_POWER_UPS_ON_SCREEN,
+  POWER_UP_WIDTH,
+  POWER_UP_HEIGHT,
 } from "../constants/gameConfig"
-import { Enemy, Platform } from "../state/types"
+import { Enemy, Platform, PowerUp, PowerUpType } from "../state/types"
 
 // Platform collision width computed the same way as PlatformGenerator and GameCanvas.
 // Must stay in sync with SCREEN_WIDTH / PLATFORM_COLUMNS.
@@ -272,6 +275,10 @@ export function tickEnemy(e: Enemy, dt: number): void {
 //
 // Death (AABB overlap from side or below, enemy alive):
 //   Returns 'death' — caller sets isDead=true and fires onGameOver.
+//   NOTE: when invincible === true the caller skips this function entirely.
+//   Stomp is still checked even while invincible — stomping an enemy while
+//   on a jetpack is valid and gives a bounce. Only side/below deaths are
+//   blocked by invincibility.
 //
 // prevPy tunnelling guard: uses the player Y from before the move step,
 // same pattern as checkPlatformCollision.
@@ -282,6 +289,7 @@ export function checkEnemyCollision(
   prevPy: number,
   velocityY: number,
   enemyPool: Enemy[],
+  invincible: boolean,
 ): "stomp" | "death" | null {
   "worklet"
   const feetY = py + PLAYER_HEIGHT
@@ -295,16 +303,69 @@ export function checkEnemyCollision(
     // Horizontal overlap
     if (px + PLAYER_WIDTH <= e.x || px >= e.x + e.width) continue
 
-    // Stomp — feet crossed the top face of the enemy while falling
+    // Stomp — feet crossed the top face of the enemy while falling.
+    // Stomp is ALWAYS checked regardless of invincibility — you can still
+    // stomp enemies while riding the jetpack or bottle rocket.
     if (velocityY > 0 && prevFeetY <= e.y && feetY >= e.y) {
-      e.alive = false // prevents any further collision with this enemy
-      e.active = false // removes from tick and render immediately
+      e.alive = false
+      e.active = false
       return "stomp"
     }
 
-    // Side / below contact — instant death
-    if (feetY > e.y && headY < e.y + e.height) {
+    // Side / below contact — death only when NOT invincible.
+    // When invincible (jetpack / bottleRocket active) BeerGuy phases through.
+    if (!invincible && feetY > e.y && headY < e.y + e.height) {
       return "death"
+    }
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// checkPowerUpCollection
+//
+// Returns the type of the collected power-up, or null if nothing was collected.
+//
+// Collection rules:
+//   1. Only called when activePowerUpState.type === "none" — the caller guards
+//      this. If a power-up is already active, this function is never reached
+//      and all power-up items remain visible on their platforms.
+//   2. AABB overlap between BeerGuy's hitbox and the power-up item hitbox.
+//      Power-ups are collected by walking/jumping into them mid-air, same as
+//      Doodle Jump. No "landing" required.
+//   3. Pretzel Boots follow the same AABB collection path BUT their effect
+//      (jump multiplier) is applied by the caller immediately if the bounce
+//      on the same frame is detected. The caller checks both platform collision
+//      and power-up collection, so both can fire on the same frame.
+//   4. On collection: mutates powerUp.active = false (item disappears).
+//      The caller writes activePowerUpState via .modify() — not done here
+//      to keep this function a pure worklet with no SharedValue access.
+//
+// Returns the type string so the caller can set up the correct state.
+// ---------------------------------------------------------------------------
+export function checkPowerUpCollection(
+  px: number,
+  py: number,
+  powerUpPool: PowerUp[],
+): PowerUpType | null {
+  "worklet"
+  // BeerGuy hitbox
+  const right = px + PLAYER_WIDTH
+  const bottom = py + PLAYER_HEIGHT
+
+  for (let i = 0; i < MAX_POWER_UPS_ON_SCREEN; i++) {
+    const pu = powerUpPool[i]
+    if (!pu.active) continue
+
+    // AABB overlap
+    if (
+      px < pu.x + POWER_UP_WIDTH &&
+      right > pu.x &&
+      py < pu.y + POWER_UP_HEIGHT &&
+      bottom > pu.y
+    ) {
+      pu.active = false // deactivate item — disappears from canvas immediately
+      return pu.type
     }
   }
   return null
