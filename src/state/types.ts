@@ -95,3 +95,29 @@ export type PowerUp = {
   type: PowerUpType
   active: boolean
 }
+
+// ---------------------------------------------------------------------------
+// ActivePowerUpState
+//
+// Held in a single SharedValue<ActivePowerUpState> so the worklet reads one
+// object instead of four separate shared values every frame.
+//
+// Fields:
+//   type        — which power-up is active ("none" = no power-up)
+//   timerMs     — ms remaining; counts down each frame; 0 when inactive
+//   invincible  — true while the player cannot be killed by enemies
+//
+// Power-up invincibility rules:
+//   jetpack       → invincible (moving fast, keg thrusters)
+//   bottleRocket  → invincible (short violent burst)
+//   foamHat       → NOT invincible (slow float, enemies can still hit)
+//   pretzelBoots  → instant, no timed state, no invincibility flag
+//
+// "none" is a string sentinel rather than null so the worklet can compare
+// without a null check (worklets handle string === "none" safely).
+// ---------------------------------------------------------------------------
+export type ActivePowerUpState = {
+  type: PowerUpType | "none"
+  timerMs: number
+  invincible: boolean
+}
