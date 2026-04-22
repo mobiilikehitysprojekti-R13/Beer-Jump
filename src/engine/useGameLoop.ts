@@ -11,6 +11,7 @@ import {
   applyTouchInput,
   checkPlatformCollision,
   checkEnemyCollision,
+  checkPowerUpCollection,
   tickMovingPlatform,
   tickBreakablePlatform,
   tickEnemy,
@@ -30,6 +31,14 @@ import {
   GAME_START_DELAY_MS,
   PLATFORM_POOL_SIZE,
   MAX_ENEMIES,
+  MAX_POWER_UPS_ON_SCREEN,
+  PRETZEL_JUMP_MULTIPLIER,
+  FOAM_HAT_DURATION_MS,
+  FOAM_HAT_ASCENT_SPEED,
+  JETPACK_DURATION_MS,
+  JETPACK_ASCENT_SPEED,
+  ROCKET_DURATION_MS,
+  ROCKET_ASCENT_SPEED,
 } from "../constants/gameConfig"
 import { log, logFromWorklet } from "../utils/logger"
 
@@ -39,28 +48,38 @@ import { log, logFromWorklet } from "../utils/logger"
 // Drives the per-frame physics tick via Reanimated's useFrameCallback
 // (UI thread, ~60fps) and exposes restartRun() for GameScreen to call.
 //
-// Key architectural decisions:
+// Power-up integration:
 //
-//   GameScreen is the permanent root screen — it never unmounts. This means
-//   useFrameCallback registers exactly once per app session and is never
-//   re-registered, which is the root fix for BUG-9.
+//   Collection — after platform collision each frame, checkPowerUpCollection
+//   is called ONLY when no power-up is currently active. If a power-up item
+//   is overlapping BeerGuy it is consumed and activePowerUpState is written.
+//   If a power-up is already active, all items stay on their platforms.
 //
-//   restartRun() is NOT called automatically on mount. It is called only
-//   when the player explicitly presses Play or Play Again in GameScreen.
-//   This eliminates every remaining BUG-9 vector:
-//     - No mount-triggered callback activation
-//     - No stale setTimeout race from a previous restartRun() call
-//     - No re-registration on Home navigation (GameScreen stays mounted,
-//       but the game loop is simply idle while HomeOverlay is visible)
+//   Tick / physics override — at the START of each frame (before gravity),
+//   if a power-up is active its timer is decremented. The remaining time
+//   drives the physics override for that frame:
+//     • foamHat       → velocityY set to FOAM_HAT_ASCENT_SPEED, gravity applied after
+//     • jetpack       → velocityY set to JETPACK_ASCENT_SPEED, gravity applied after
+//     • bottleRocket  → velocityY set to ROCKET_ASCENT_SPEED, gravity SKIPPED this frame
 //
-// onGameOver is called once per run via runOnJS when the death condition
-// fires. It receives the final score and runs on the JS thread.
+//   Expiry — when timerMs reaches 0 the state is reset atomically via
+//   .modify() in one call. Gravity resumes from the next frame. BeerGuy's
+//   velocityY at expiry is whatever the last override wrote (e.g. JETPACK_ASCENT_SPEED)
+//   so he continues upward briefly — this is intentional and feels natural.
+//   The player retains control the moment the timer expires.
 //
-// sensitivity is passed as a plain number from GameScreen (read from Zustand
-// there) so useGameLoop holds no Zustand subscription of its own.
+//   Invincibility — while jetpack or bottleRocket is active, enemy side/below
+//   collisions are ignored. Stomp is always checked (you can stomp enemies
+//   during any power-up). The invincible flag is carried in activePowerUpState
+//   and read directly in the enemy collision step.
 //
-// RNG: LCG seed stored in GV.rngState (SharedValue<number[]>) so
-// recyclePlatforms can read/write it on the UI thread without closures.
+//   Pretzel Boots — instant, no timed state. Collected like other power-ups
+//   (AABB overlap), but instead of setting activePowerUpState, the caller
+//   multiplies JUMP_VELOCITY by PRETZEL_JUMP_MULTIPLIER on the same frame
+//   if (and only if) a platform bounce also happened this frame. If the boots
+//   are collected in mid-air with no bounce this frame, the multiplier is
+//   stored in a local worklet variable and applied on the NEXT bounce only.
+//   After one use the boots effect is consumed — it does not persist.
 // ---------------------------------------------------------------------------
 export function useGameLoop(
   onGameOver: (score: number) => void,
@@ -81,7 +100,7 @@ export function useGameLoop(
     (frameInfo: FrameInfo) => {
       "worklet"
 
-      // 1. Guard — do nothing if paused or already dead
+      // 1. Guard
       if (GV.isPaused.value || GV.isDead.value) return
 
       // 2. Delta time — cap at MAX_DELTA_TIME to prevent physics explosion on
@@ -167,10 +186,65 @@ export function useGameLoop(
         })
       }
 
-      // 5. Gravity
-      GV.velocityY.value = applyGravity(GV.velocityY.value, dt)
+      // -----------------------------------------------------------------------
+      // 5. Power-up tick — runs BEFORE gravity so the override velocity is set
+      //    first, then gravity either adds to it (foamHat/jetpack) or is skipped
+      //    entirely (bottleRocket burst).
+      //
+      //    suppressGravity is a local boolean used in step 6 to skip the normal
+      //    gravity call for the bottleRocket burst window.
+      // -----------------------------------------------------------------------
+      let suppressGravity = false
 
-      // 6. Move — capture prevPy before move for accurate collision (Key Rule 12)
+      const puState = GV.activePowerUpState.value
+      if (puState.type !== "none") {
+        const newTimer = puState.timerMs - dt
+
+        if (newTimer <= 0) {
+          // Power-up expired this frame — reset all state atomically.
+          // velocityY is intentionally left at whatever the last override wrote
+          // so BeerGuy continues in the direction of travel for a natural handoff.
+          GV.activePowerUpState.modify((state) => {
+            "worklet"
+            state.type = "none"
+            state.timerMs = 0
+            state.invincible = false
+            return state
+          })
+          logFromWorklet("powerUp", "power-up expired", {
+            wasType: puState.type,
+          })
+        } else {
+          // Still active — update timer and apply physics override for this frame.
+          GV.activePowerUpState.modify((state) => {
+            "worklet"
+            state.timerMs = newTimer
+            return state
+          })
+
+          if (puState.type === "foamHat") {
+            // Override velocityY to gentle upward drift; gravity still applied after.
+            GV.velocityY.value = FOAM_HAT_ASCENT_SPEED
+          } else if (puState.type === "jetpack") {
+            // Override velocityY to strong upward; gravity still applied after,
+            // net is JETPACK_ASCENT_SPEED + GRAVITY * dt ≈ -1.31 units/ms upward.
+            GV.velocityY.value = JETPACK_ASCENT_SPEED
+          } else if (puState.type === "bottleRocket") {
+            // Maximum burst — suppress gravity entirely this frame.
+            GV.velocityY.value = ROCKET_ASCENT_SPEED
+            suppressGravity = true
+            // Dampen horizontal to ~30% during the rocket burst.
+            GV.velocityX.value = GV.velocityX.value * 0.3
+          }
+        }
+      }
+
+      // 6. Gravity (skipped during bottleRocket burst)
+      if (!suppressGravity) {
+        GV.velocityY.value = applyGravity(GV.velocityY.value, dt)
+      }
+
+      // 7. Move — capture prevPy before move for accurate collision
       const prevPy = GV.playerY.value
       GV.playerX.value = wrapHorizontal(
         GV.playerX.value + GV.velocityX.value * dt,
@@ -182,10 +256,7 @@ export function useGameLoop(
         logFromWorklet("physics", "screen wrap", { newX: wrappedX })
       }
 
-      // 7. Platform tick loop — moving patrol + breakable crumble timer.
-      //    No dynamic allocation. Mutates platform objects in place.
-      //    Disappearing platforms have no per-instance tick — their animation
-      //    is derived from GV.globalTime in GameCanvas on the UI thread.
+      // 8. Platform tick loop
       const plats = GV.platforms.value
       for (let i = 0; i < PLATFORM_POOL_SIZE; i++) {
         const p = plats[i]
@@ -197,20 +268,27 @@ export function useGameLoop(
         }
       }
 
-      // 7b. Enemy tick loop — horizontal patrol for all active enemies.
+      // 8b. Enemy tick loop
       const enems = GV.enemies.value
       for (let i = 0; i < MAX_ENEMIES; i++) {
         if (enems[i].active) tickEnemy(enems[i], dt)
       }
 
-      // 8. Enemy collision — checked before platform collision so a stomp
-      //    registers as a bounce rather than falling through the enemy.
+      // -----------------------------------------------------------------------
+      // 9. Enemy collision
+      //
+      // Read invincible flag from the current activePowerUpState — note that
+      // .modify() above may have just expired the state, so we re-read .value
+      // here rather than using the local puState captured before the tick.
+      // -----------------------------------------------------------------------
+      const currentInvincible = GV.activePowerUpState.value.invincible
       const enemyResult = checkEnemyCollision(
         GV.playerX.value,
         GV.playerY.value,
         prevPy,
         GV.velocityY.value,
         GV.enemies.value,
+        currentInvincible,
       )
       if (enemyResult === "stomp") {
         // Silent normal bounce — same velocity as a platform landing
@@ -222,7 +300,7 @@ export function useGameLoop(
         return
       }
 
-      // 8b. Platform collision
+      // 9b. Platform collision
       const hit = checkPlatformCollision(
         GV.playerX.value,
         GV.playerY.value,
@@ -244,16 +322,113 @@ export function useGameLoop(
         })
       }
 
+      // -----------------------------------------------------------------------
+      // 10. Power-up collection
+      //
+      // Only attempted when no power-up is currently active. This is the hard
+      // gate: if activePowerUpState.type !== "none", items are skipped entirely
+      // and remain visible on their platforms until the active power-up expires.
+      //
+      // Pretzel Boots special path:
+      //   - Collected via the same AABB check as other power-ups.
+      //   - If a platform bounce happened this frame (hit === true), apply the
+      //     jump multiplier immediately to velocityY (already set to JUMP_VELOCITY).
+      //   - If collected mid-air (no bounce this frame), set pretzelBootsPending.
+      //     The multiplier will be applied on the next platform bounce (step 9b
+      //     would need to re-check on the following frame). For simplicity,
+      //     pretzelBootsPending is stored as a shared value so it persists across
+      //     frames and is consumed on the first subsequent bounce.
+      //
+      //   pretzelBoots NEVER write to activePowerUpState — they are instant.
+      // -----------------------------------------------------------------------
+      if (GV.activePowerUpState.value.type === "none") {
+        const collected = checkPowerUpCollection(
+          GV.playerX.value,
+          GV.playerY.value,
+          GV.powerUps.value,
+        )
+
+        if (collected !== null) {
+          if (collected === "pretzelBoots") {
+            if (hit) {
+              // Bounce happened same frame — apply multiplier directly.
+              GV.velocityY.value = JUMP_VELOCITY * PRETZEL_JUMP_MULTIPLIER
+              logFromWorklet(
+                "powerUp",
+                "pretzelBoots: mega bounce on collection frame",
+                {
+                  newVelocityY: GV.velocityY.value,
+                },
+              )
+            } else {
+              // Mid-air collection — arm the pending flag for next bounce.
+              GV.pretzelBootsPending.value = true
+              logFromWorklet(
+                "powerUp",
+                "pretzelBoots: collected mid-air, pending next bounce",
+              )
+            }
+          } else {
+            // Timed power-up — write state atomically.
+            let duration = 0
+            let invincible = false
+
+            if (collected === "foamHat") {
+              duration = FOAM_HAT_DURATION_MS
+              invincible = false
+            } else if (collected === "jetpack") {
+              duration = JETPACK_DURATION_MS
+              invincible = true
+            } else if (collected === "bottleRocket") {
+              duration = ROCKET_DURATION_MS
+              invincible = true
+            }
+
+            GV.activePowerUpState.modify((state) => {
+              "worklet"
+              state.type = collected
+              state.timerMs = duration
+              state.invincible = invincible
+              return state
+            })
+
+            logFromWorklet("powerUp", "power-up activated", {
+              type: collected,
+              duration,
+              invincible,
+            })
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 10b. Pretzel Boots pending bounce
+      //
+      // If boots were collected mid-air in a previous frame and a bounce just
+      // happened, apply the multiplier now and clear the pending flag.
+      // -----------------------------------------------------------------------
+      if (GV.pretzelBootsPending.value && hit) {
+        GV.velocityY.value = JUMP_VELOCITY * PRETZEL_JUMP_MULTIPLIER
+        GV.pretzelBootsPending.value = false
+        logFromWorklet(
+          "powerUp",
+          "pretzelBoots: pending mega bounce consumed",
+          {
+            newVelocityY: GV.velocityY.value,
+          },
+        )
+      }
+
       GV.isAirborne.value =
         GV.velocityY.value > 0.01 || GV.velocityY.value < -0.01
 
-      // 9. Camera — advance when player enters upper 40% of visible screen
+      // 11. Camera
       const scrollThreshold = GV.playerY.value - SCREEN_HEIGHT * 0.4
       if (scrollThreshold < GV.cameraY.value) {
         GV.cameraY.value = scrollThreshold
       }
 
-      // 10. Score
+      // 12. Score
       GV.score.value = Math.floor(Math.abs(GV.cameraY.value) / SCORE_PER_UNIT)
 
       const newScore = GV.score.value
@@ -265,15 +440,16 @@ export function useGameLoop(
         })
       }
 
-      // 11. Recycle off-screen platforms (and enemies)
+      // 13. Recycle platforms (now takes powerUpPool as third argument)
       recyclePlatforms(
         GV.platforms.value,
         GV.enemies.value,
+        GV.powerUps.value,
         GV.cameraY.value,
         GV.rngState.value,
       )
 
-      // 12. Death check — playerY > bottom edge of visible screen
+      // 14. Death check
       if (GV.playerY.value > GV.cameraY.value + SCREEN_HEIGHT) {
         // Guard: enemy death path above already sets isDead and returns early,
         // so this branch only fires for fall deaths. The guard here prevents
@@ -283,15 +459,7 @@ export function useGameLoop(
           logFromWorklet("gameLoop", "death triggered", {
             playerY: GV.playerY.value,
             cameraY: GV.cameraY.value,
-            deathThreshold: GV.cameraY.value + SCREEN_HEIGHT,
-            distanceBelowThreshold:
-              GV.playerY.value - (GV.cameraY.value + SCREEN_HEIGHT),
             score: GV.score.value,
-            platformCount: GV.platforms.value.length,
-            p0active: GV.platforms.value[0]?.active,
-            p0y: GV.platforms.value[0]?.y,
-            p1active: GV.platforms.value[1]?.active,
-            p1y: GV.platforms.value[1]?.y,
           })
           runOnJS(onGameOver)(GV.score.value)
         }
@@ -310,65 +478,72 @@ export function useGameLoop(
   //
   // Resets all game state and starts the frame callback. Called by GameScreen
   // when the player presses Play or Play Again. Never called automatically.
-  //
-  // Sequence:
-  //   Step 0 — deactivate any currently active callback
-  //   Step A — pause + clear dead flag
-  //   Step B — reset all primitive shared values (including globalTime)
-  //   Step C — reset RNG state on UI thread
-  //   Step D — reset platform pool on UI thread, then unpause
-  //   Step E — activate frame callback after GAME_START_DELAY_MS
-  //
-  // globalTime is reset to 0 in Step B so every run starts with all
-  // disappearing platforms at the beginning of Phase D (fully visible).
-  // This is the most forgiving starting state for the player.
-  // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
   const restartRun = useCallback(() => {
-    // Step 0: deactivate — prevents reading partially-reset state
+    // Prevents reading partially-reset state
     frameCallback.setActive(false)
 
     const newSeed = Date.now()
     log.info("gameLoop", "restartRun START", { seed: newSeed })
 
-    // Step A
+    // Pause + clear dead flag
     GV.isPaused.value = true
     GV.isDead.value = false
 
-    // Step B — reset all primitives including globalTime
+    // Reset all primitive shared values (including globalTime)
     GV.seed.value = newSeed
     GV.playerX.value = SCREEN_WIDTH / 2 - PLAYER_WIDTH / 2
-    GV.playerY.value = SCREEN_HEIGHT - 160 - PLAYER_HEIGHT // feet flush with p0
+    GV.playerY.value = SCREEN_HEIGHT - 160 - PLAYER_HEIGHT
     GV.velocityX.value = 0
     GV.velocityY.value = 0
     GV.cameraY.value = 0
     GV.score.value = 0
-    GV.gyroX.value = 0 // zero stale tilt from previous run
+    GV.gyroX.value = 0
     GV.touchLeft.value = false
     GV.touchRight.value = false
     GV.globalTime.value = 0
     GV.isAirborne.value = false
 
-    log.info("gameLoop", "restartRun — primitives set", {
+    // Clear power-up active state and pending flag.
+    // Cleared on JS thread here; the worklet will see the clean state on
+    // the first frame because isPaused guards the tick until Step D unpause.
+    GV.activePowerUpState.modify((state) => {
+      "worklet"
+      state.type = "none"
+      state.timerMs = 0
+      state.invincible = false
+      return state
+    })
+    GV.pretzelBootsPending.value = false
+
+    log.info("gameLoop", "restartRun — primitives + power-up state reset", {
       seed: newSeed,
-      playerX: SCREEN_WIDTH / 2 - PLAYER_WIDTH / 2,
-      playerY: SCREEN_HEIGHT - 160 - PLAYER_HEIGHT,
     })
 
-    // Step C: reset RNG on UI thread — including rowsGenerated counter
+    // Reset RNG
     GV.rngState.modify((state) => {
       "worklet"
       state[0] = newSeed
       state[1] = 0
-      state[2] = 0 // rowsGenerated — resets tier to 1 on every new run
+      state[2] = 0
       return state
     })
 
-    // Step D: reset platform pool + enemy pool on UI thread, then unpause
+    // Reset enemy pool, power-up pool, platform pool, then unpause
     GV.enemies.modify((pool) => {
       "worklet"
       for (let i = 0; i < pool.length; i++) {
         pool[i].active = false
         pool[i].alive = false
+        pool[i].y = -9999
+      }
+      return pool
+    })
+
+    GV.powerUps.modify((pool) => {
+      "worklet"
+      for (let i = 0; i < pool.length; i++) {
+        pool[i].active = false
         pool[i].y = -9999
       }
       return pool
@@ -383,8 +558,6 @@ export function useGameLoop(
         p0active: pool[0].active,
         p0x: pool[0].x,
         p0y: pool[0].y,
-        p1active: pool[1].active,
-        p1y: pool[1].y,
       })
 
       // Unpause here — pool is ready, worklet safe to tick once activated.
@@ -392,7 +565,7 @@ export function useGameLoop(
       return pool
     })
 
-    // Step E: activate after GAME_START_DELAY_MS — lets the screen transition
+    // Activate after GAME_START_DELAY_MS. lets the screen transition
     // animation complete before BeerGuy starts moving.
     setTimeout(() => {
       frameCallback.setActive(true)
@@ -406,11 +579,13 @@ export function useGameLoop(
     cameraY: GV.cameraY,
     platforms: GV.platforms,
     enemies: GV.enemies,
+    powerUps: GV.powerUps,
     score: GV.score,
     globalTime: GV.globalTime,
     isAirborne: GV.isAirborne,
     jumpAnimActive: GV.jumpAnimActive,
     jumpAnimStartTime: GV.jumpAnimStartTime,
+    activePowerUpState: GV.activePowerUpState,
     restartRun,
   }
 }
