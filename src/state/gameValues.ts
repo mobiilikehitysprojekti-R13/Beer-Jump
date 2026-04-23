@@ -1,5 +1,5 @@
 import { makeMutable } from "react-native-reanimated"
-import { Enemy, Platform } from "./types"
+import { ActivePowerUpState, Enemy, Platform, PowerUp } from "./types"
 import {
   SCREEN_WIDTH,
   SCREEN_HEIGHT,
@@ -7,6 +7,7 @@ import {
   PLAYER_HEIGHT,
   MAX_ENEMIES,
   ENEMY_HEIGHT,
+  MAX_POWER_UPS_ON_SCREEN,
 } from "../constants/gameConfig"
 import { createPlatformPool } from "../engine/PlatformGenerator"
 
@@ -76,6 +77,78 @@ function createEnemyPool(): Enemy[] {
 }
 
 export const enemies = makeMutable<Enemy[]>(createEnemyPool())
+
+// ---------------------------------------------------------------------------
+// Power-up object pool
+//
+// Fixed pool of MAX_POWER_UPS_ON_SCREEN inactive PowerUp objects.
+// Follows the exact same pattern as the enemy pool — allocated once at module
+// load, mutated in place by recyclePlatforms() at spawn time, never reassigned.
+//
+// Spawn rules (enforced by recyclePlatforms):
+//   • Only on non-moving, non-enemy rows (moving platforms can't hold items;
+//     enemy rows have no platforms beneath them)
+//   • Only one power-up per row
+//   • If activePowerUpState.type !== "none", no new power-ups are collected
+//     (items remain on their platforms, visible but untouchable until the
+//     active power-up expires)
+//
+// Power-ups are positioned sitting ON TOP of their platform:
+//   powerUp.y = platform.y - POWER_UP_HEIGHT - POWER_UP_PLATFORM_OFFSET
+// This is set at spawn time in recyclePlatforms.
+// ---------------------------------------------------------------------------
+function createPowerUpPool(): PowerUp[] {
+  const pool: PowerUp[] = []
+  for (let i = 0; i < MAX_POWER_UPS_ON_SCREEN; i++) {
+    pool.push({
+      id: i,
+      x: 0,
+      y: -9999,
+      type: "pretzelBoots", // default type — overwritten at spawn
+      active: false,
+    })
+  }
+  return pool
+}
+
+export const powerUps = makeMutable<PowerUp[]>(createPowerUpPool())
+
+// ---------------------------------------------------------------------------
+// Pretzel Boots pending flag
+//
+// Set to true when Pretzel Boots are collected mid-air (no bounce on the same
+// frame). Consumed and cleared on the next platform bounce in gameTick.
+// Reset to false in restartRun Step B2.
+// ---------------------------------------------------------------------------
+export const pretzelBootsPending = makeMutable(false)
+
+// ---------------------------------------------------------------------------
+// Active power-up state
+//
+// Single SharedValue holding all timed power-up state. Written exclusively
+// from the UI thread worklet in gameTick (collection + tick + expiry).
+// Read by:
+//   - gameTick: physics override per frame, enemy invincibility guard
+//   - HUD (via useAnimatedReaction): drives the timer bar UI
+//   - GameCanvas: drives the visual indicator on BeerGuy (future sprite)
+//
+// Fields:
+//   type       — "none" when no power-up is active
+//   timerMs    — countdown in ms; 0 when inactive
+//   invincible — true while jetpack or bottleRocket is active
+//
+// Invariant: if type === "none" then timerMs === 0 and invincible === false.
+// The expiry path in gameTick enforces this in one atomic write via .modify().
+//
+// pretzelBoots NEVER writes to this state — it is instant (single bounce
+// multiplier applied in the same frame as platform collision) and has no
+// timed active window.
+// ---------------------------------------------------------------------------
+export const activePowerUpState = makeMutable<ActivePowerUpState>({
+  type: "none",
+  timerMs: 0,
+  invincible: false,
+})
 
 // ---------------------------------------------------------------------------
 // Global animation clock

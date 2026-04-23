@@ -202,7 +202,7 @@ export const GAME_START_DELAY_MS = 500 // ms wait for screen transition before s
 export const DISAPPEAR_PERIOD_MS = 2000 // ms for one full opacity sine cycle
 export const FAKE_PLATFORM_ALPHA = 0.45 // constant opacity for fake platforms
 
-// (stubs, not yet active in gameplay)
+// ENEMIES
 export const MAX_ENEMIES = 8
 export const ENEMY_BASE_SPEED = 0.08 // units/ms patrol speed at Tier 2 (~2/3 of player walk speed)
 // ENEMY_WIDTH is not a fixed constant — it is set at spawn time to 2 × colWidth
@@ -215,3 +215,74 @@ export const PRETZEL_JUMP_MULTIPLIER = 3
 export const ROCKET_VELOCITY = -40
 export const XP_PER_SCORE_UNIT = 0.1
 export const COINS_PER_SCORE_UNIT = 0.01
+
+// ---------------------------------------------------------------------------
+// POWER-UPS
+//
+// Four beer-themed power-ups. Pretzel Boots are instant (no timed state).
+// The remaining three are timed and override BeerGuy's physics for their
+// duration. A power-up that is currently active blocks collection of any
+// new power-up — the item stays on its platform until the run ends.
+//
+// Invincibility rules (enemy collisions ignored while active):
+//   jetpack      → YES  (keg thrusters, moving fast)
+//   bottleRocket → YES  (violent short burst)
+//   foamHat      → NO   (slow float, enemies can still reach BeerGuy)
+//   pretzelBoots → N/A  (instant, no active duration)
+//
+// ASCENT_SPEED constants are the target velocityY written each frame while
+// the power-up is active. Gravity is still applied after, so the net upward
+// velocity is ASCENT_SPEED + GRAVITY * dt per frame. Tune here to feel right.
+//
+// Foam Hat net ascent at 60fps (dt ≈ 16ms):
+//   velocityY set to FOAM_HAT_ASCENT_SPEED (-0.5) then gravity adds +0.288
+//   net ≈ -0.21 units/ms → slow, floaty upward drift. Good.
+//
+// Jetpack net ascent:
+//   velocityY set to -1.6, gravity adds +0.288, net ≈ -1.31 units/ms → strong.
+//
+// Bottle Rocket: gravity suppressed entirely during burst for maximum violence.
+//   velocityY is set to ROCKET_ASCENT_SPEED (-3.2) with no gravity step,
+//   giving a raw ballistic feel for ROCKET_DURATION_MS then gravity resumes.
+// ---------------------------------------------------------------------------
+export const POWER_UP_WIDTH = 28 // px hitbox / render width
+export const POWER_UP_HEIGHT = 28 // px hitbox / render height
+// Y offset above the platform top so the icon sits visibly on the surface.
+export const POWER_UP_PLATFORM_OFFSET = 6 // px above platform top edge
+
+// Pretzel Boots — instant single bounce multiplier
+// PRETZEL_JUMP_MULTIPLIER = 3 already defined above (legacy stub, kept)
+
+// Foam Hat — slow sustained ascent, no invincibility
+export const FOAM_HAT_DURATION_MS = 4000 // ms total active time
+export const FOAM_HAT_ASCENT_SPEED = -0.5 // units/ms target velocityY per frame
+
+// Jetpack — strong sustained ascent, grants invincibility
+// JETPACK_DURATION_MS = 5000 already defined above (legacy stub, kept)
+export const JETPACK_ASCENT_SPEED = -1.6 // units/ms target velocityY per frame
+
+// Bottle Rocket — short violent burst, gravity suppressed, grants invincibility
+export const ROCKET_DURATION_MS = 900 // ms burst window
+export const ROCKET_ASCENT_SPEED = -3.2 // units/ms (no gravity applied during burst)
+
+// Power-up spawn probability per eligible row (non-moving, non-enemy rows only).
+// Tier index 0-based matching TIER array in DifficultyScaler.
+// Tier 1 (intro): slightly lower to not confuse new runs with power-ups immediately.
+export const POWER_UP_SPAWN_PROB = [0.04, 0.06, 0.08, 0.1, 0.1]
+
+// Power-up type weights (must sum to 1.0).
+// Pretzel Boots most common — instant, lowest disruption.
+// Bottle Rocket rarest — highest disruption, most powerful.
+export const POWER_UP_TYPE_WEIGHTS = {
+  pretzelBoots: 0.5,
+  foamHat: 0.25,
+  jetpack: 0.15,
+  bottleRocket: 0.1,
+}
+
+// Placeholder colors for power-up rectangles until sprites are ready.
+// Hardcoded hex — game world colors, must not invert in dark mode.
+export const COLOR_POWER_UP_PRETZEL = "#D4A017" // golden brown
+export const COLOR_POWER_UP_FOAM_HAT = "#00BCD4" // cyan
+export const COLOR_POWER_UP_JETPACK = "#FF5722" // orange-red
+export const COLOR_POWER_UP_ROCKET = "#E91E63" // hot pink
