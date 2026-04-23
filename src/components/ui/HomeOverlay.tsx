@@ -4,7 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useActiveTheme } from '../../hooks/useActiveTheme'
 import { ThemeBackdrop } from './ThemeBackdrop'
-
+import { StatsOverlay } from './StatsOverlay'
 // HomeOverlay
 // Renders the home / main menu UI as a full-screen View overlay inside
 // GameScreen. Previously this was a separate navigator screen (HomeScreen).
@@ -27,6 +27,7 @@ type Props = {
   onShowSettings: () => void
   onShowShop: () => void
   onShowInventory: () => void
+  onShowStats: () => void
 }
 
 const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
@@ -34,7 +35,7 @@ const selectPersonalBest = (s: ReturnType<typeof useAppStore.getState>) =>
 const selectCoins = (s: ReturnType<typeof useAppStore.getState>) =>
   s.coins
 
-export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowShop, onShowInventory }: Props) {
+export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowShop, onShowInventory, onShowStats }: Props) {
   const personalBest = useAppStore(selectPersonalBest)
   const coins = useAppStore(selectCoins)
   const activeTheme = useActiveTheme()
@@ -67,6 +68,10 @@ export function HomeOverlay({ onPlay, onShowLeaderboard, onShowSettings, onShowS
 
       <TouchableOpacity style={[styles.button, { backgroundColor: activeTheme.buttonBackground }]} onPress={onShowInventory}>
         <Text style={[styles.buttonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>Inventory</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.button, { backgroundColor: activeTheme.buttonBackground }]} onPress={onShowStats}>
+        <Text style={[styles.buttonText, { color: activeTheme.buttonTextColor, fontFamily: activeTheme.fontFamily }]}>Stats</Text>
       </TouchableOpacity>
     </View>
   )

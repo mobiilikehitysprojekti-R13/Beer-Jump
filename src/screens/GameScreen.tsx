@@ -21,6 +21,7 @@ import { GamePhase } from "../state/types"
 import { log } from "../utils/logger"
 import { useActiveTheme } from "../hooks/useActiveTheme"
 import { COINS_PER_SCORE_UNIT } from "../constants/gameConfig"
+import { StatsOverlay } from "../components/ui/StatsOverlay"
 
 // ---------------------------------------------------------------------------
 // Stable Zustand selectors — defined outside the component so their
@@ -85,6 +86,7 @@ export default function GameScreen() {
   const [settingsOpenedFromPause, setSettingsOpenedFromPause] = useState(false)
   const [showShop, setShowShop] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [showPauseOverlay, setShowPauseOverlay] = useState(false)
 
   useTiltInput()
@@ -267,6 +269,7 @@ export default function GameScreen() {
           onShowSettings={handleShowSettingsFromHome}
           onShowShop={() => setShowShop(true)}
           onShowInventory={() => setShowInventory(true)}
+          onShowStats={() => setShowStats(true)}
         />
       )}
 
@@ -297,6 +300,13 @@ export default function GameScreen() {
         <InventoryOverlay
           visible={true}
           onClose={() => setShowInventory(false)}
+        />
+      )}
+
+      {showStats && (
+        <StatsOverlay
+          visible={true}
+          onClose={() => setShowStats(false)}
         />
       )}
     </View>
